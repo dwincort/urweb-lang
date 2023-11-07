@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>fileTypes</key>
+	<array>
+		<string>ur</string>
+		<string>urs</string>
+	</array>
+	<key>name</key>
+	<string>UrWeb</string>
+	<key>patterns</key>
+	<array>
+		<dict>
+			<key>comment</key>
+			<string>UrWeb keywords</string>
+			<key>match</key>
+			<string>(\b(EQUAL|GREATER|LESS|NONE|SOME|abstraction|abstype|and|andalso|array|as|before|bool|case|char|class|con|constraint|datatype|do|else|end|eqtype|exception|exn|false|fn|fun|functor|handle|if|in|include|infix|infixr|int|let|list|local|nil|nonfix|not|o|of|op|open|option|orelse|overload|print|raise|real|rec|ref|sharing|sig|signature|string|struct|structure|table|task|then|true|type|unit|val|vector|where|while|with|withtype|word)\b|\$|\@)</string>
+			<key>name</key>
+			<string>keyword.source.ur</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Numeric constants</string>
+			<key>match</key>
+			<string>\b[0-9]+\b</string>
+			<key>name</key>
+			<string>constant.numeric.ur</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Built in types</string>
+			<key>match</key>
+			<string>\b[A-Z]([A-z0-9]*)\b</string>
+			<key>name</key>
+			<string>support.type.ur</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>String constant</string>
+			<key>match</key>
+			<string>"(\\"|[^"])*"</string>
+			<key>name</key>
+			<string>string.ur</string>
+		</dict>
+		<dict>
+			<key>begin</key>
+			<string>\(\*</string>
+			<key>comment</key>
+			<string>Comment</string>
+			<key>end</key>
+			<string>\*\)</string>
+			<key>name</key>
+			<string>comment.ur</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Character</string>
+			<key>match</key>
+			<string>(\(\)|=&gt;|:|::|:::|\+\+|---|--|\~|\[\]|-&gt;|--&gt;)</string>
+			<key>name</key>
+			<string>constant.character.ur</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Infix operators</string>
+			<key>match</key>
+			<string>(&gt;&gt;&gt;|&lt;\||\|&gt;|=|&lt;&gt;|-|\+|\*|&lt;|&lt;=|&gt;|&gt;=|\^)</string>
+			<key>name</key>
+			<string>support.function.ur</string>
+		</dict>
+	</array>
+	<key>scopeName</key>
+	<string>source.ur</string>
+	<key>uuid</key>
+	<string>65be9466-98df-11e4-b8aa-123b93f75cba</string>
+</dict>
+</plist>

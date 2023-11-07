@@ -1,0 +1,34 @@
+{
+  "name": "urweb-lang",
+  "displayName": "urweb-language",
+  "description": "Syntax highlighting for Ur/Web",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.83.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "ur",
+      "aliases": ["UrWeb", "ur"],
+      "extensions": [".ur",".urs"],
+      "configuration": "./language-configuration.json"
+    },{
+      "id": "urp",
+      "aliases": ["UrWebProject", "urp"],
+      "extensions": [".urp"],
+      "configuration": "./language-configuration-urp.json"
+    }],
+    "grammars": [{
+      "language": "ur",
+      "scopeName": "source.ur",
+      "path": "./syntaxes/urweb.tmLanguage"
+    },{
+      "language": "urp",
+      "scopeName": "source.urp",
+      "path": "./syntaxes/urwebproj.tmLanguage"
+    }]
+  }
+}

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>fileTypes</key>
+	<array>
+		<string>urp</string>
+	</array>
+	<key>name</key>
+	<string>UrWebProj</string>
+	<key>patterns</key>
+	<array>
+		<dict>
+			<key>comment</key>
+			<string>UrWebP keywords</string>
+			<key>match</key>
+			<string>\b(allow|deny|alwaysInline|benignEffectful|clientOnly|clientToServer|clientToServer|database|debug|effectful|exe|file|filecache|ffi|html5|include|jsFile|jsFunc|jsModule|library|limit|link|linker|mimeTypes|minHeap|memoInline|neverInline|noMangleSql|noXsrfProtection|onError|path|prefix|profile|rewrite|safeGet|safeGetDefault|script|serverOnly|sigfile|sql|timeFormat|timeout|xhtml)\b</string>
+			<key>name</key>
+			<string>keyword.source.urp</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Ur names</string>
+			<key>match</key>
+			<string>\b[A-Z]([A-z0-9]*)\b</string>
+			<key>name</key>
+			<string>support.type.urp</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Parameters</string>
+			<key>match</key>
+			<string>\b(url|mime|requestHeader|responseHeader|env|meta|cleanup|clients|database|deltas|globals|headers|heap|inputs|messages|page|script|subinputs|time|transactionals|all|url|table|sequence|view|relation|cookie|style)\b</string>
+			<key>name</key>
+			<string>constant.language.urp</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Character</string>
+			<key>match</key>
+			<string>(=|\[-\])</string>
+			<key>name</key>
+			<string>constant.character.urp</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Numeric constants</string>
+			<key>match</key>
+			<string>\b[0-9]+\b</string>
+			<key>name</key>
+			<string>constant.numeric.urp</string>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Comment</string>
+			<key>match</key>
+			<string>#.*$</string>
+			<key>name</key>
+			<string>comment.line.number-sign</string>
+		</dict>
+	</array>
+	<key>scopeName</key>
+	<string>source.urp</string>
+	<key>uuid</key>
+	<string>65be9466-98df-11e4-b8aa-123b93f75cba</string>
+</dict>
+</plist>
