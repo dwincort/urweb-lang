@@ -61,14 +61,6 @@
 			<key>name</key>
 			<string>constant.character.ur</string>
 		</dict>
-		<dict>
-			<key>comment</key>
-			<string>Infix operators</string>
-			<key>match</key>
-			<string>(&gt;&gt;&gt;|&lt;\||\|&gt;|=|&lt;&gt;|-|\+|\*|&lt;|&lt;=|&gt;|&gt;=|\^)</string>
-			<key>name</key>
-			<string>support.function.ur</string>
-		</dict>
 	</array>
 	<key>scopeName</key>
 	<string>source.ur</string>

@@ -2,9 +2,14 @@
   "name": "urweb-lang",
   "displayName": "urweb-language",
   "description": "Syntax highlighting for Ur/Web",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "publisher": "DanWC",
   "engines": {
     "vscode": "^1.83.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/dwincort/urweb-lang.git"
   },
   "categories": [
     "Programming Languages"
