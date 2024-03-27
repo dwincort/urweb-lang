@@ -14,7 +14,7 @@
 			<key>comment</key>
 			<string>UrWebP keywords</string>
 			<key>match</key>
-			<string>\b(allow|deny|alwaysInline|benignEffectful|clientOnly|clientToServer|clientToServer|database|debug|effectful|exe|file|filecache|ffi|html5|include|jsFile|jsFunc|jsModule|library|limit|link|linker|mimeTypes|minHeap|memoInline|neverInline|noMangleSql|noXsrfProtection|onError|path|prefix|profile|rewrite|safeGet|safeGetDefault|script|serverOnly|sigfile|sql|timeFormat|timeout|xhtml)\b</string>
+			<string>^\b(allow|deny|alwaysInline|benignEffectful|clientOnly|clientToServer|clientToServer|database|debug|effectful|exe|file|filecache|ffi|html5|include|jsFile|jsFunc|jsModule|library|limit|link|linker|mimeTypes|minHeap|memoInline|neverInline|noMangleSql|noXsrfProtection|onError|path|prefix|profile|rewrite|safeGet|safeGetDefault|script|serverOnly|sigfile|sql|timeFormat|timeout|xhtml)\b</string>
 			<key>name</key>
 			<string>keyword.source.urp</string>
 		</dict>

@@ -2,7 +2,7 @@
   "name": "urweb-lang",
   "displayName": "urweb-language",
   "description": "Syntax highlighting for Ur/Web",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "DanWC",
   "engines": {
     "vscode": "^1.83.0"
@@ -18,22 +18,48 @@
     "languages": [{
       "id": "ur",
       "aliases": ["UrWeb", "ur"],
-      "extensions": [".ur",".urs"],
-      "configuration": "./language-configuration.json"
+      "extensions": [".ur"],
+      "configuration": "./language-configuration.json",
+      "icon": {
+        "light": "./icons/ur.png",
+        "dark": "./icons/ur.png"
+      }
+    },{
+      "id": "urs",
+      "aliases": ["UrWebSignature", "urs"],
+      "extensions": [".urs"],
+      "configuration": "./language-configuration.json",
+      "icon": {
+        "light": "./icons/urs.png",
+        "dark": "./icons/urs.png"
+      }
     },{
       "id": "urp",
       "aliases": ["UrWebProject", "urp"],
       "extensions": [".urp"],
-      "configuration": "./language-configuration-urp.json"
+      "configuration": "./language-configuration-urp.json",
+      "icon": {
+        "light": "./icons/urp.png",
+        "dark": "./icons/urp.png"
+      }
     }],
     "grammars": [{
       "language": "ur",
       "scopeName": "source.ur",
       "path": "./syntaxes/urweb.tmLanguage"
     },{
+      "language": "urs",
+      "scopeName": "source.ur",
+      "path": "./syntaxes/urweb.tmLanguage"
+    },{
       "language": "urp",
       "scopeName": "source.urp",
       "path": "./syntaxes/urwebproj.tmLanguage"
+    }],
+    "snippets": [{
+      "language": "ur",
+      "scopeName": "source.ur",
+      "path": "./snippets/urweb-snippets.json"
     }]
   }
 }

@@ -1,0 +1,62 @@
+{
+	"case": {
+		"prefix": "case",
+		"body": "case ${1:expression} of\n\t  ${2:pattern1} => ${3:body1}\n\t| ${4:pattern2} => ${5:body2}\n",
+		"description": "UrWeb 'case' pattern matching",
+		"scope": "source.ur"
+	},
+	"datatype": {
+		"prefix": "datatype",
+		"body": "datatype ${1:name} = \n\t  ${2:name1} of ${3:type1} \n\t| ${4:name2} of ${5:type2}",
+		"description": "UrWeb 'datatype' declaration",
+		"scope": "source.ur"
+	},
+	"fn": {
+		"prefix": "fn",
+		"body": "fn ${1:arguments} => \n\t${2:body}\n",
+		"description": "UrWeb 'fn' anonymous function",
+		"scope": "source.ur"
+	},
+	"fun": {
+		"prefix": "fun",
+		"body": "fun ${1:function_name} ${2:arguments} =\n\t${0:body}\n",
+		"description": "UrWeb 'fun' function",
+		"scope": "source.ur"
+	},
+	"functor": {
+		"prefix": "functor",
+		"body": "functor ${1:name} (${2:argument}) = \nstruct\n\t${3:(* Body *)}\nend\n",
+		"description": "UrWeb 'functor' declaration",
+		"scope": "source.ur"
+	},
+	"if": {
+		"prefix": "if",
+		"body": "if ${1:expression} then ${2:expression} else ${3:expression}",
+		"description": "UrWeb 'if/then/else' block",
+		"scope": "source.ur"
+	},
+	"let": {
+		"prefix": "let",
+		"body": "let\n\tval ${1:name} = ${2:value}\nin\n\t${3:body}\nend\n",
+		"description": "Ur/Web 'let' block",
+		"scope": "source.ur"
+	},
+	"signature": {
+		"prefix": "signature",
+		"body": "signature ${1:name} = \nsig\n\t${2:(* Body *)}\nend\n",
+		"description": "UrWeb 'signature' declaration",
+		"scope": "source.ur"
+	},
+	"structure": {
+		"prefix": "structure",
+		"body": "structure ${1:name} = \nstruct\n\t${2:(* Body *)}\nend\n",
+		"description": "UrWeb 'structure' declaration",
+		"scope": "source.ur"
+	},
+	"val": {
+		"prefix": "val",
+		"body": "val ${1:name} : ${2:type} = ${3:expression}",
+		"description": "UrWeb 'val' declaration with type",
+		"scope": "source.ur"
+	}
+}
