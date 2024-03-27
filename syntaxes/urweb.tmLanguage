@@ -59,14 +59,14 @@
 			<key>name</key>
 			<string>support.type.ur</string>
 		</dict>
-		<dict>
+		<!-- <dict>
 			<key>comment</key>
 			<string>lowercase Ur/Web identifiers</string>
 			<key>match</key>
 			<string>\b[a-z_]([A-Za-z0-9_']*)\b</string>
 			<key>name</key>
 			<string>variable.ur</string>
-		</dict>
+		</dict> -->
 		<dict>
 			<key>comment</key>
 			<string>String constant</string>
@@ -76,24 +76,91 @@
 			<string>string.ur</string>
 		</dict>
 		<dict>
-			<key>begin</key>
-			<string>\(\*</string>
 			<key>comment</key>
 			<string>Comment block</string>
+			<key>begin</key>
+			<string>\(\*</string>
 			<key>end</key>
 			<string>\*\)</string>
 			<key>name</key>
 			<string>comment.ur</string>
+			<key>patterns</key>
+			<array>
+        <dict>
+          <key>include</key>
+          <string>#nestedComment</string>
+        </dict>
+      </array>
 		</dict>
 		<dict>
 			<key>comment</key>
-			<string>(Character?) symbols</string>
+			<string>XML Blocks</string>
+			<key>begin</key>
+			<string>\<xml\></string>
+			<key>end</key>
+			<string>\<\/xml\></string>
+			<key>name</key>
+			<string>markup.ur</string>
+			<key>patterns</key>
+			<array>
+        <dict>
+          <key>comment</key>
+          <string>Comment block</string>
+          <key>begin</key>
+          <string>\(\*</string>
+          <key>end</key>
+          <string>\*\)</string>
+          <key>name</key>
+          <string>comment.ur</string>
+          <key>patterns</key>
+          <array>
+            <dict>
+              <key>include</key>
+              <string>#nestedComment</string>
+            </dict>
+          </array>
+        </dict>
+        <dict>
+          <key>begin</key>
+          <string>{</string>
+          <key>end</key>
+          <string>}</string>
+          <key>patterns</key>
+          <array>
+            <dict>
+              <key>include</key>
+              <string>$self</string>
+            </dict>
+          </array>
+        </dict>
+      </array>
+		</dict>
+		<dict>
+			<key>comment</key>
+			<string>Symbols</string>
 			<key>match</key>
-			<string>(\(\)|=&gt;|:|::|:::|\+\+|---|--|\~|\[\]|-&gt;|--&gt;)</string>
+			<string>(\(\)|=&gt;|:|::|:::|\+\+|---|--|\~|\[\]|-&gt;|--&gt;|&lt;-|&gt;&gt;&gt;|&lt;&lt;&lt;|\|&gt;|&lt;\|)</string>
 			<key>name</key>
 			<string>constant.character.ur</string>
 		</dict>
 	</array>
+  <key>repository</key>
+  <dict>
+    <key>nestedComment</key>
+    <dict>
+			<key>begin</key>
+			<string>\(\*</string>
+			<key>end</key>
+			<string>\*\)</string>
+			<key>patterns</key>
+			<array>
+        <dict>
+          <key>include</key>
+          <string>#nestedComment</string>
+        </dict>
+      </array>
+    </dict>
+  </dict>
 	<key>scopeName</key>
 	<string>source.ur</string>
 	<key>uuid</key>
