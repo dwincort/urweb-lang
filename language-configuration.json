@@ -17,11 +17,13 @@
         ["{", "}"],
         ["[", "]"],
         ["(", ")"],
-        ["(*", "*)"],
-        ["\"", "\""],
-        ["'", "'"],
+        { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+        { "open": "\"", "close": "\"", "notIn": ["string"] },
+        { "open": "`", "close": "`", "notIn": ["string"] },
         ["<xml>", "</xml>"]
     ],
+    // To make sure we can autoclose before a `>` symbol
+    "autoCloseBefore": ";:.,=}])>` \n\t",
     // symbols that can be used to surround a selection
     "surroundingPairs": [
         ["{", "}"],

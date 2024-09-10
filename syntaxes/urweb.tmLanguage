@@ -23,7 +23,7 @@
 			<key>comment</key>
 			<string>UrWeb builtins</string>
 			<key>match</key>
-			<string>(\b(bool|list|True|False|Some|None|result|Success|Failure|task|unit|eq|num|ord|show|read|monad|transaction|source|signal|int|float|time|blob|string|char)\b)</string>
+			<string>(\b(bool|list|True|False|Some|None|result|Success|Failure|task|unit|eq|num|ord|show|read|monad|transaction|source|signal|int|float|time|blob|string|char)\b|&lt;xml\/&gt;)</string>
 			<key>name</key>
 			<string>keyword.source.ur.builtins</string>
 		</dict>
