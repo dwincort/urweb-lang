@@ -2,107 +2,122 @@
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>fileTypes</key>
-	<array>
-		<string>ur</string>
-		<string>urs</string>
-	</array>
-	<key>name</key>
-	<string>UrWeb</string>
-	<key>patterns</key>
-	<array>
-		<dict>
-			<key>comment</key>
-			<string>UrWeb keywords</string>
-			<key>match</key>
-			<string>(\b(and|case|class|con|constraint|constraints|datatype|else|end|extern|fn|map|fun|functor|if|include|of|open|let|in|rec|sequence|ensure_index|sig|signature|cookie|style|task|policy|struct|structure|table|view|then|type|val|where)\b)</string>
-			<key>name</key>
-			<string>keyword.source.ur</string>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>UrWeb builtins</string>
-			<key>match</key>
-			<string>(\b(bool|list|True|False|Some|None|result|Success|Failure|task|unit|eq|num|ord|show|read|monad|transaction|source|signal|int|float|time|blob|string|char|money)\b|&lt;xml\/&gt;)</string>
-			<key>name</key>
-			<string>keyword.source.ur.builtins</string>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>UrWeb symbols</string>
-			<key>match</key>
-			<string>(\$|\@)</string>
-			<key>name</key>
-			<string>keyword.source.ur.symbols</string>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>UrWeb SQL keywords</string>
-			<key>match</key>
-			<string>(\b(SELECT|DISTINCT|FROM|AS|WHERE|SQL|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|ALL|UNION|INTERSECT|EXCEPT|TRUE|FALSE|AND|OR|NOT|COUNT|AVG|SUM|MIN|MAX|ASC|DESC|INSERT|INTO|VALUES|UPDATE|SET|DELETE|PRIMARY|KEY|CONSTRAINT|UNIQUE|CHECK|FOREIGN|REFERENCES|ON|NO|ACTION|CASCADE|RESTRICT|NULL|JOIN|INNER|OUTER|LEFT|RIGHT|FULL|CROSS|SELECT1|IF|THEN|ELSE|COALESCE|LIKE|RANDOM)\b)</string>
-			<key>name</key>
-			<string>keyword.source.ur.sql</string>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>Numeric constants</string>
-			<key>match</key>
-			<string>\b[0-9]+\b</string>
-			<key>name</key>
-			<string>constant.numeric.ur</string>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>uppercase Ur/Web identifiers</string>
-			<key>match</key>
-			<string>\b[A-Z]([A-z0-9]*)\b</string>
-			<key>name</key>
-			<string>support.type.ur</string>
-		</dict>
-		<!-- <dict>
-			<key>comment</key>
-			<string>lowercase Ur/Web identifiers</string>
-			<key>match</key>
-			<string>\b[a-z_]([A-Za-z0-9_']*)\b</string>
-			<key>name</key>
-			<string>variable.ur</string>
-		</dict> -->
-		<dict>
-			<key>comment</key>
-			<string>String constant</string>
-			<key>match</key>
-			<string>"(\\"|[^"])*"</string>
-			<key>name</key>
-			<string>string.ur</string>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>Comment block</string>
-			<key>begin</key>
-			<string>\(\*</string>
-			<key>end</key>
-			<string>\*\)</string>
-			<key>name</key>
-			<string>comment.ur</string>
-			<key>patterns</key>
-			<array>
+  <key>fileTypes</key>
+  <array>
+    <string>ur</string>
+    <string>urs</string>
+  </array>
+  <key>name</key>
+  <string>UrWeb</string>
+  <key>patterns</key>
+  <array>
+    <dict>
+      <key>comment</key>
+      <string>More UrWeb (to fix nesting in XML)</string>
+      <key>begin</key>
+      <string>{</string>
+      <key>end</key>
+      <string>}</string>
+      <key>patterns</key>
+      <array>
+        <dict>
+          <key>include</key>
+          <string>$self</string>
+        </dict>
+      </array>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>UrWeb keywords</string>
+      <key>match</key>
+      <string>(\b(and|case|class|con|constraint|constraints|datatype|else|end|extern|fn|map|fun|functor|if|include|of|open|let|in|rec|sequence|ensure_index|sig|signature|cookie|style|task|policy|struct|structure|table|view|then|type|val|where)\b)</string>
+      <key>name</key>
+      <string>keyword.source.ur</string>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>UrWeb builtins</string>
+      <key>match</key>
+      <string>(\b(bool|list|True|False|Some|None|result|Success|Failure|task|unit|eq|num|ord|show|read|monad|transaction|source|signal|int|float|time|blob|string|char|money)\b|&lt;xml\/&gt;)</string>
+      <key>name</key>
+      <string>keyword.source.ur.builtins</string>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>UrWeb symbols</string>
+      <key>match</key>
+      <string>(\$|\@)</string>
+      <key>name</key>
+      <string>keyword.source.ur.symbols</string>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>UrWeb SQL keywords</string>
+      <key>match</key>
+      <string>(\b(SELECT|DISTINCT|FROM|AS|WHERE|SQL|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|ALL|UNION|INTERSECT|EXCEPT|TRUE|FALSE|AND|OR|NOT|COUNT|AVG|SUM|MIN|MAX|ASC|DESC|INSERT|INTO|VALUES|UPDATE|SET|DELETE|PRIMARY|KEY|CONSTRAINT|UNIQUE|CHECK|FOREIGN|REFERENCES|ON|NO|ACTION|CASCADE|RESTRICT|NULL|JOIN|INNER|OUTER|LEFT|RIGHT|FULL|CROSS|SELECT1|IF|THEN|ELSE|COALESCE|LIKE|RANDOM)\b)</string>
+      <key>name</key>
+      <string>keyword.source.ur.sql</string>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>Numeric constants</string>
+      <key>match</key>
+      <string>\b[0-9]+\b</string>
+      <key>name</key>
+      <string>constant.numeric.ur</string>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>uppercase Ur/Web identifiers</string>
+      <key>match</key>
+      <string>\b[A-Z]([A-z0-9]*)\b</string>
+      <key>name</key>
+      <string>support.type.ur</string>
+    </dict>
+    <!-- <dict>
+      <key>comment</key>
+      <string>lowercase Ur/Web identifiers</string>
+      <key>match</key>
+      <string>\b[a-z_]([A-Za-z0-9_']*)\b</string>
+      <key>name</key>
+      <string>variable.ur</string>
+    </dict> -->
+    <dict>
+      <key>comment</key>
+      <string>String constant</string>
+      <key>match</key>
+      <string>"(\\"|[^"])*"</string>
+      <key>name</key>
+      <string>string.ur</string>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>Comment block</string>
+      <key>begin</key>
+      <string>\(\*</string>
+      <key>end</key>
+      <string>\*\)</string>
+      <key>name</key>
+      <string>comment.ur</string>
+      <key>patterns</key>
+      <array>
         <dict>
           <key>include</key>
           <string>#nestedComment</string>
         </dict>
       </array>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>XML Blocks</string>
-			<key>begin</key>
-			<string>\<xml\></string>
-			<key>end</key>
-			<string>\<\/xml\></string>
-			<key>name</key>
-			<string>markup.ur</string>
-			<key>patterns</key>
-			<array>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>XML Blocks</string>
+      <key>begin</key>
+      <string>\<xml\></string>
+      <key>end</key>
+      <string>\<\/xml\></string>
+      <key>name</key>
+      <string>markup.ur</string>
+      <key>patterns</key>
+      <array>
         <dict>
           <key>comment</key>
           <string>Comment block</string>
@@ -134,26 +149,26 @@
           </array>
         </dict>
       </array>
-		</dict>
-		<dict>
-			<key>comment</key>
-			<string>Symbols</string>
-			<key>match</key>
-			<string>(\(\)|=&gt;|:|::|:::|\+\+|---|--|\~|\[\]|-&gt;|--&gt;|&lt;-|&gt;&gt;&gt;|&lt;&lt;&lt;|\|&gt;|&lt;\|)</string>
-			<key>name</key>
-			<string>constant.character.ur</string>
-		</dict>
-	</array>
+    </dict>
+    <dict>
+      <key>comment</key>
+      <string>Symbols</string>
+      <key>match</key>
+      <string>(\(\)|=&gt;|:|::|:::|\+\+|---|--|\~|\[\]|-&gt;|--&gt;|&lt;-|&gt;&gt;&gt;|&lt;&lt;&lt;|\|&gt;|&lt;\|)</string>
+      <key>name</key>
+      <string>constant.character.ur</string>
+    </dict>
+  </array>
   <key>repository</key>
   <dict>
     <key>nestedComment</key>
     <dict>
-			<key>begin</key>
-			<string>\(\*</string>
-			<key>end</key>
-			<string>\*\)</string>
-			<key>patterns</key>
-			<array>
+      <key>begin</key>
+      <string>\(\*</string>
+      <key>end</key>
+      <string>\*\)</string>
+      <key>patterns</key>
+      <array>
         <dict>
           <key>include</key>
           <string>#nestedComment</string>
@@ -161,9 +176,9 @@
       </array>
     </dict>
   </dict>
-	<key>scopeName</key>
-	<string>source.ur</string>
-	<key>uuid</key>
-	<string>65be9466-98df-11e4-b8aa-123b93f75cba</string>
+  <key>scopeName</key>
+  <string>source.ur</string>
+  <key>uuid</key>
+  <string>65be9466-98df-11e4-b8aa-123b93f75cba</string>
 </dict>
 </plist>
