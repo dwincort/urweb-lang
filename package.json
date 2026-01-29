@@ -1,8 +1,8 @@
 {
   "name": "urweb-lang",
   "displayName": "urweb-language",
-  "description": "Syntax highlighting for Ur/Web",
-  "version": "0.0.3",
+  "description": "Syntax highlighting and code navigation for Ur/Web",
+  "version": "0.0.4",
   "publisher": "DanWC",
   "engines": {
     "vscode": "^1.83.0"
@@ -13,6 +13,11 @@
   },
   "categories": [
     "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:ur",
+    "onLanguage:urs"
   ],
   "contributes": {
     "languages": [{
@@ -58,8 +63,17 @@
     }],
     "snippets": [{
       "language": "ur",
-      "scopeName": "source.ur",
       "path": "./snippets/urweb-snippets.json"
     }]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.83.0",
+    "typescript": "^5.0.0"
   }
 }

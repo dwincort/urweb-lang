@@ -1,4 +1,25 @@
+# Source files (compiled output is in out/)
+src/**
+*.ts
+
+# TypeScript config
+tsconfig.json
+
+# Node modules
+node_modules/**
+
+# Development files
 .vscode/**
 .vscode-test/**
+
+# Git
+.git/**
 .gitignore
-vsc-extension-quickstart.md
+
+# Build artifacts
+*.vsix
+
+# Editor files
+*.swp
+*.swo
+*~
