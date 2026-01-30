@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
  * Token types for the lexer (extended from symbolProvider with 'dot' and 'open').
  */
 interface Token {
-    type: 'keyword' | 'ident' | 'struct' | 'sig' | 'end' | 'let' | 'in' | 'lparen' | 'rparen' | 'colon' | 'equals' | 'dot' | 'open' | 'and' | 'other';
+    type: 'keyword' | 'ident' | 'struct' | 'sig' | 'end' | 'let' | 'in' | 'lparen' | 'rparen' | 'lbracket' | 'rbracket' | 'lbrace' | 'rbrace' | 'colon' | 'equals' | 'dot' | 'open' | 'and' | 'fn' | 'arrow' | 'larrow' | 'semicolon' | 'comma' | 'pipe' | 'case' | 'of' | 'other';
     value: string;
     offset: number;
     line: number;
@@ -13,7 +13,7 @@ interface Token {
 /**
  * Kinds of definitions we track.
  */
-type DefinitionKind = 'val' | 'fun' | 'type' | 'datatype' | 'con' | 'structure' | 'signature' | 'functor' | 'table' | 'view' | 'sequence' | 'cookie' | 'style' | 'task' | 'class' | 'policy' | 'functor-param';
+type DefinitionKind = 'val' | 'fun' | 'type' | 'datatype' | 'con' | 'structure' | 'signature' | 'functor' | 'table' | 'view' | 'sequence' | 'cookie' | 'style' | 'task' | 'class' | 'policy' | 'functor-param' | 'param';
 
 /**
  * A definition (binding) in the scope tree.
@@ -45,7 +45,7 @@ interface Scope {
     children: Scope[];
     startOffset: number;
     endOffset: number;
-    kind: 'file' | 'structure' | 'signature' | 'functor' | 'let' | 'functor-param';
+    kind: 'file' | 'structure' | 'signature' | 'functor' | 'let' | 'functor-param' | 'function-body';
     name?: string;
 }
 
@@ -77,140 +77,389 @@ const DECLARATION_KINDS: Map<string, DefinitionKind> = new Map([
 const CONTAINER_KEYWORDS = new Set(['structure', 'signature', 'functor']);
 
 /**
- * Tokenizer for Ur/Web code.
- * Skips comments, string literals, and XML blocks.
- * Extended to recognize 'dot', 'open', and 'and' tokens.
+ * Tokenizer state passed between tokenization functions.
  */
-function tokenize(text: string): Token[] {
-    const tokens: Token[] = [];
-    let i = 0;
-    let line = 0;
+interface TokenizerState {
+    text: string;
+    index: number;
+    line: number;
+    tokens: Token[];
+}
 
-    while (i < text.length) {
+/**
+ * Skip a comment block (* ... *) with nesting support.
+ */
+function skipComment(state: TokenizerState): void {
+    state.index += 2; // skip '(*'
+    let depth = 1;
+    while (state.index < state.text.length && depth > 0) {
+        if (state.text[state.index] === '\n') state.line++;
+        if (state.text[state.index] === '(' && state.text[state.index + 1] === '*') {
+            depth++;
+            state.index += 2;
+        } else if (state.text[state.index] === '*' && state.text[state.index + 1] === ')') {
+            depth--;
+            state.index += 2;
+        } else {
+            state.index++;
+        }
+    }
+}
+
+/**
+ * Skip a string literal "...".
+ */
+function skipString(state: TokenizerState): void {
+    state.index++; // skip opening quote
+    while (state.index < state.text.length) {
+        if (state.text[state.index] === '\n') state.line++;
+        if (state.text[state.index] === '\\' && state.index + 1 < state.text.length) {
+            if (state.text[state.index + 1] === '\n') state.line++;
+            state.index += 2;
+        } else if (state.text[state.index] === '"') {
+            state.index++; // skip closing quote
+            break;
+        } else {
+            state.index++;
+        }
+    }
+}
+
+/**
+ * Tokenize an identifier or keyword.
+ */
+function tokenizeIdentifier(state: TokenizerState): void {
+    const start = state.index;
+    while (state.index < state.text.length && /[a-zA-Z0-9_']/.test(state.text[state.index])) {
+        state.index++;
+    }
+    const value = state.text.substring(start, state.index);
+    let type: Token['type'] = 'ident';
+
+    if (value === 'struct') type = 'struct';
+    else if (value === 'sig') type = 'sig';
+    else if (value === 'end') type = 'end';
+    else if (value === 'let') type = 'let';
+    else if (value === 'in') type = 'in';
+    else if (value === 'open') type = 'open';
+    else if (value === 'and') type = 'and';
+    else if (value === 'fn') type = 'fn';
+    else if (value === 'case') type = 'case';
+    else if (value === 'of') type = 'of';
+    else if (DECLARATION_KINDS.has(value)) type = 'keyword';
+
+    state.tokens.push({ type, value, offset: start, line: state.line });
+}
+
+/**
+ * Process XML content, tokenizing embedded Ur/Web code in {...}.
+ * Called after '<xml>' has been consumed.
+ */
+function processXmlContent(state: TokenizerState): void {
+    let xmlDepth = 1;
+
+    while (state.index < state.text.length && xmlDepth > 0) {
+        // Track line numbers
+        if (state.text[state.index] === '\n') {
+            state.line++;
+            state.index++;
+            continue;
+        }
+
+        // Check for nested <xml>
+        if (state.text.substring(state.index, state.index + 5) === '<xml>') {
+            xmlDepth++;
+            state.index += 5;
+            continue;
+        }
+
+        // Check for </xml>
+        if (state.text.substring(state.index, state.index + 6) === '</xml>') {
+            xmlDepth--;
+            state.index += 6;
+            continue;
+        }
+
+        // Check for embedded Ur/Web code in {...}
+        if (state.text[state.index] === '{') {
+            state.index++; // skip '{'
+            tokenizeUrWebInBraces(state);
+            continue;
+        }
+
+        // Skip other XML content
+        state.index++;
+    }
+}
+
+/**
+ * Tokenize Ur/Web code inside braces {...} within XML.
+ * Handles nested braces and nested XML blocks.
+ * Called after '{' has been consumed.
+ */
+function tokenizeUrWebInBraces(state: TokenizerState): void {
+    let braceDepth = 1;
+
+    while (state.index < state.text.length && braceDepth > 0) {
+        const text = state.text;
+        const i = state.index;
+
         // Track line numbers
         if (text[i] === '\n') {
-            line++;
-            i++;
+            state.line++;
+            state.index++;
             continue;
         }
 
         // Skip whitespace
         if (/\s/.test(text[i])) {
-            i++;
+            state.index++;
             continue;
         }
 
-        // Skip comments (* ... *)
+        // Handle closing brace
+        if (text[i] === '}') {
+            braceDepth--;
+            if (braceDepth === 0) {
+                state.index++;
+                return;
+            }
+            // Emit token for nested record pattern
+            state.tokens.push({ type: 'rbrace', value: '}', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+
+        // Handle opening brace (for record literals, etc.)
+        if (text[i] === '{') {
+            state.tokens.push({ type: 'lbrace', value: '{', offset: i, line: state.line });
+            braceDepth++;
+            state.index++;
+            continue;
+        }
+
+        // Skip comments
         if (text[i] === '(' && text[i + 1] === '*') {
-            i += 2;
-            let depth = 1;
-            while (i < text.length && depth > 0) {
-                if (text[i] === '\n') line++;
-                if (text[i] === '(' && text[i + 1] === '*') {
-                    depth++;
-                    i += 2;
-                } else if (text[i] === '*' && text[i + 1] === ')') {
-                    depth--;
-                    i += 2;
-                } else {
-                    i++;
-                }
-            }
+            skipComment(state);
             continue;
         }
 
-        // Skip string literals "..."
+        // Skip strings
         if (text[i] === '"') {
-            i++; // skip opening quote
-            while (i < text.length) {
-                if (text[i] === '\n') line++;
-                if (text[i] === '\\' && i + 1 < text.length) {
-                    // Skip escaped character
-                    if (text[i + 1] === '\n') line++;
-                    i += 2;
-                } else if (text[i] === '"') {
-                    i++; // skip closing quote
-                    break;
-                } else {
-                    i++;
-                }
-            }
+            skipString(state);
             continue;
         }
 
-        // Skip XML blocks <xml>...</xml> (nested)
+        // Handle nested XML
         if (text.substring(i, i + 5) === '<xml>') {
-            i += 5; // skip '<xml>'
-            let depth = 1;
-            while (i < text.length && depth > 0) {
-                if (text[i] === '\n') line++;
-                if (text.substring(i, i + 5) === '<xml>') {
-                    depth++;
-                    i += 5;
-                } else if (text.substring(i, i + 6) === '</xml>') {
-                    depth--;
-                    i += 6;
-                } else {
-                    i++;
-                }
-            }
+            state.index += 5;
+            processXmlContent(state);
             continue;
         }
 
         // Identifiers and keywords
         if (/[a-zA-Z_]/.test(text[i])) {
-            const start = i;
-            while (i < text.length && /[a-zA-Z0-9_']/.test(text[i])) {
-                i++;
-            }
-            const value = text.substring(start, i);
-            let type: Token['type'] = 'ident';
-
-            if (value === 'struct') type = 'struct';
-            else if (value === 'sig') type = 'sig';
-            else if (value === 'end') type = 'end';
-            else if (value === 'let') type = 'let';
-            else if (value === 'in') type = 'in';
-            else if (value === 'open') type = 'open';
-            else if (value === 'and') type = 'and';
-            else if (DECLARATION_KINDS.has(value)) type = 'keyword';
-
-            tokens.push({ type, value, offset: start, line });
+            tokenizeIdentifier(state);
             continue;
         }
 
         // Structural characters
         if (text[i] === '(') {
-            tokens.push({ type: 'lparen', value: '(', offset: i, line });
-            i++;
+            state.tokens.push({ type: 'lparen', value: '(', offset: i, line: state.line });
+            state.index++;
             continue;
         }
         if (text[i] === ')') {
-            tokens.push({ type: 'rparen', value: ')', offset: i, line });
-            i++;
+            state.tokens.push({ type: 'rparen', value: ')', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '[') {
+            state.tokens.push({ type: 'lbracket', value: '[', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === ']') {
+            state.tokens.push({ type: 'rbracket', value: ']', offset: i, line: state.line });
+            state.index++;
             continue;
         }
         if (text[i] === ':') {
-            tokens.push({ type: 'colon', value: ':', offset: i, line });
-            i++;
+            state.tokens.push({ type: 'colon', value: ':', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '=' && text[i + 1] === '>') {
+            state.tokens.push({ type: 'arrow', value: '=>', offset: i, line: state.line });
+            state.index += 2;
             continue;
         }
         if (text[i] === '=') {
-            tokens.push({ type: 'equals', value: '=', offset: i, line });
-            i++;
+            state.tokens.push({ type: 'equals', value: '=', offset: i, line: state.line });
+            state.index++;
             continue;
         }
         if (text[i] === '.') {
-            tokens.push({ type: 'dot', value: '.', offset: i, line });
-            i++;
+            state.tokens.push({ type: 'dot', value: '.', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '<' && text[i + 1] === '-') {
+            state.tokens.push({ type: 'larrow', value: '<-', offset: i, line: state.line });
+            state.index += 2;
+            continue;
+        }
+        if (text[i] === ';') {
+            state.tokens.push({ type: 'semicolon', value: ';', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === ',') {
+            state.tokens.push({ type: 'comma', value: ',', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '|') {
+            state.tokens.push({ type: 'pipe', value: '|', offset: i, line: state.line });
+            state.index++;
             continue;
         }
 
         // Skip other characters
-        i++;
+        state.index++;
+    }
+}
+
+/**
+ * Tokenizer for Ur/Web code.
+ * Handles comments, string literals, and XML blocks with embedded Ur/Web.
+ */
+function tokenize(text: string): Token[] {
+    const state: TokenizerState = {
+        text,
+        index: 0,
+        line: 0,
+        tokens: []
+    };
+
+    while (state.index < text.length) {
+        const i = state.index;
+
+        // Track line numbers
+        if (text[i] === '\n') {
+            state.line++;
+            state.index++;
+            continue;
+        }
+
+        // Skip whitespace
+        if (/\s/.test(text[i])) {
+            state.index++;
+            continue;
+        }
+
+        // Skip comments (* ... *)
+        if (text[i] === '(' && text[i + 1] === '*') {
+            skipComment(state);
+            continue;
+        }
+
+        // Skip string literals "..."
+        if (text[i] === '"') {
+            skipString(state);
+            continue;
+        }
+
+        // Handle XML blocks <xml>...</xml> with embedded Ur/Web in {...}
+        if (text.substring(i, i + 5) === '<xml>') {
+            state.index += 5; // skip '<xml>'
+            processXmlContent(state);
+            continue;
+        }
+
+        // Identifiers and keywords
+        if (/[a-zA-Z_]/.test(text[i])) {
+            tokenizeIdentifier(state);
+            continue;
+        }
+
+        // Structural characters
+        if (text[i] === '(') {
+            state.tokens.push({ type: 'lparen', value: '(', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === ')') {
+            state.tokens.push({ type: 'rparen', value: ')', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '[') {
+            state.tokens.push({ type: 'lbracket', value: '[', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === ']') {
+            state.tokens.push({ type: 'rbracket', value: ']', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === ':') {
+            state.tokens.push({ type: 'colon', value: ':', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '=' && text[i + 1] === '>') {
+            state.tokens.push({ type: 'arrow', value: '=>', offset: i, line: state.line });
+            state.index += 2;
+            continue;
+        }
+        if (text[i] === '=') {
+            state.tokens.push({ type: 'equals', value: '=', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '.') {
+            state.tokens.push({ type: 'dot', value: '.', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '<' && text[i + 1] === '-') {
+            state.tokens.push({ type: 'larrow', value: '<-', offset: i, line: state.line });
+            state.index += 2;
+            continue;
+        }
+        if (text[i] === ';') {
+            state.tokens.push({ type: 'semicolon', value: ';', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '{') {
+            state.tokens.push({ type: 'lbrace', value: '{', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '}') {
+            state.tokens.push({ type: 'rbrace', value: '}', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === ',') {
+            state.tokens.push({ type: 'comma', value: ',', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+        if (text[i] === '|') {
+            state.tokens.push({ type: 'pipe', value: '|', offset: i, line: state.line });
+            state.index++;
+            continue;
+        }
+
+        // Skip other characters
+        state.index++;
     }
 
-    return tokens;
+    return state.tokens;
 }
 
 /**
@@ -368,12 +617,76 @@ class ScopeBuilder {
         const kind = DECLARATION_KINDS.get(keyword);
         if (!kind) return;
 
-        // Handle 'val rec'
+        // Handle 'val rec' - recursive val, binding IS visible in RHS
+        let isRecursiveVal = false;
         if (keyword === 'val' && this.peek()?.type === 'ident' && this.peek()?.value === 'rec') {
             this.advance(); // skip 'rec'
+            isRecursiveVal = true;
         }
 
-        // Get the name
+        // For val declarations, handle patterns
+        if (keyword === 'val') {
+            // Parse the pattern to get all bindings
+            const patternBindings = this.parsePattern();
+
+            // Skip type annotation if present
+            if (this.peek()?.type === 'colon') {
+                this.advance();
+                while (this.index < this.tokens.length) {
+                    const next = this.peek();
+                    if (next?.type === 'equals') break;
+                    this.advance();
+                }
+            }
+
+            // Skip '='
+            if (this.peek()?.type === 'equals') {
+                this.advance();
+            }
+
+            if (isRecursiveVal) {
+                // val rec - bindings ARE visible in RHS (for recursion)
+                for (const binding of patternBindings) {
+                    const def: Definition = {
+                        name: binding.name,
+                        kind: 'val',
+                        range: new vscode.Range(
+                            this.document.positionAt(binding.offset),
+                            this.document.positionAt(binding.offset + binding.name.length)
+                        ),
+                        selectionRange: new vscode.Range(
+                            this.document.positionAt(binding.offset),
+                            this.document.positionAt(binding.offset + binding.name.length)
+                        ),
+                        offset: binding.offset,
+                    };
+                    this.addDefinition(scope, def);
+                }
+                this.parseValDeclaration(scope);
+            } else {
+                // Plain val - bindings NOT visible in RHS
+                const exprEndOffset = this.parseValDeclaration(scope);
+                for (const binding of patternBindings) {
+                    const def: Definition = {
+                        name: binding.name,
+                        kind: 'val',
+                        range: new vscode.Range(
+                            this.document.positionAt(binding.offset),
+                            this.document.positionAt(binding.offset + binding.name.length)
+                        ),
+                        selectionRange: new vscode.Range(
+                            this.document.positionAt(binding.offset),
+                            this.document.positionAt(binding.offset + binding.name.length)
+                        ),
+                        offset: exprEndOffset,
+                    };
+                    this.addDefinition(scope, def);
+                }
+            }
+            return;
+        }
+
+        // Get the name for non-val declarations
         const nameToken = this.peek();
         if (!nameToken || nameToken.type !== 'ident') return;
         this.advance();
@@ -393,9 +706,14 @@ class ScopeBuilder {
         // For container keywords, check if they have a body
         if (CONTAINER_KEYWORDS.has(keyword)) {
             this.parseContainerBody(scope, def, keyword);
+        } else if (keyword === 'fun') {
+            // Handle function declaration with parameters
+            // fun is always recursive - binding visible in body
+            this.addDefinition(scope, def);
+            this.parseFunDeclaration(scope, kind);
         } else {
             this.addDefinition(scope, def);
-            // Handle 'and' for mutual recursion (fun f ... and g ...)
+            // Handle 'and' for mutual recursion (datatype, type, etc.)
             while (this.peek()?.type === 'and') {
                 this.advance(); // skip 'and'
                 const andNameToken = this.peek();
@@ -418,6 +736,163 @@ class ScopeBuilder {
                 }
             }
         }
+    }
+
+    /**
+     * Parse a fun declaration's parameters and body.
+     */
+    private parseFunDeclaration(scope: Scope, kind: DefinitionKind): void {
+        const result = this.parseFunctionParameters();
+        if (!result) return;
+
+        const { params, bodyStartOffset } = result;
+
+        if (params.length > 0) {
+            // Create function-body scope
+            const bodyScope = this.createScope(scope, bodyStartOffset, scope.endOffset, 'function-body');
+
+            // Add parameters to function body scope
+            for (const param of params) {
+                const paramDef: Definition = {
+                    name: param.name,
+                    kind: 'param',
+                    range: new vscode.Range(
+                        this.document.positionAt(param.offset),
+                        this.document.positionAt(param.offset + param.name.length)
+                    ),
+                    selectionRange: new vscode.Range(
+                        this.document.positionAt(param.offset),
+                        this.document.positionAt(param.offset + param.name.length)
+                    ),
+                    offset: param.offset,
+                };
+                this.addDefinition(bodyScope, paramDef);
+            }
+
+            // Parse the function body
+            this.parseFunctionBody(bodyScope);
+        }
+
+        // Handle 'and' for mutually recursive functions
+        while (this.peek()?.type === 'and') {
+            this.advance(); // skip 'and'
+            const andNameToken = this.peek();
+            if (andNameToken?.type === 'ident') {
+                this.advance();
+                const andDef: Definition = {
+                    name: andNameToken.value,
+                    kind,
+                    range: new vscode.Range(
+                        this.document.positionAt(andNameToken.offset),
+                        this.document.positionAt(andNameToken.offset + andNameToken.value.length)
+                    ),
+                    selectionRange: new vscode.Range(
+                        this.document.positionAt(andNameToken.offset),
+                        this.document.positionAt(andNameToken.offset + andNameToken.value.length)
+                    ),
+                    offset: andNameToken.offset,
+                };
+                this.addDefinition(scope, andDef);
+
+                // Parse parameters for this 'and' function too
+                this.parseFunDeclaration(scope, kind);
+            }
+        }
+    }
+
+    /**
+     * Parse a val declaration, looking for lambda expressions.
+     * Returns the offset where the expression ends (for non-recursive val scoping).
+     */
+    private parseValDeclaration(scope: Scope): number {
+        let parenDepth = 0;
+        let bracketDepth = 0;
+        let braceDepth = 0;
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Track parentheses
+            if (t.type === 'lparen') {
+                parenDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rparen') {
+                if (parenDepth === 0) {
+                    // This closes something from before - end of expression
+                    return t.offset;
+                }
+                parenDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Track brackets
+            if (t.type === 'lbracket') {
+                bracketDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbracket') {
+                if (bracketDepth === 0) {
+                    return t.offset;
+                }
+                bracketDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Track braces (for record literals)
+            if (t.type === 'lbrace') {
+                braceDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbrace') {
+                if (braceDepth === 0) {
+                    return t.offset;
+                }
+                braceDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Found a lambda - parse it and continue
+            if (t.type === 'fn') {
+                this.parseLambda(scope);
+                continue;
+            }
+
+            // Handle let blocks
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance();
+                const letScope = this.createScope(scope, letStart, scope.endOffset, 'let');
+                this.parseLetBody(letScope);
+                letScope.endOffset = this.peek()?.offset ?? scope.endOffset;
+                continue;
+            }
+
+            // Handle case statements
+            if (t.type === 'case') {
+                this.parseCaseStatement(scope);
+                continue;
+            }
+
+            // Hit a declaration boundary - stop
+            if (t.type === 'keyword' || t.type === 'and' || t.type === 'end' || t.type === 'in') {
+                return t.offset;
+            }
+
+            this.advance();
+        }
+
+        // End of file
+        return this.tokens.length > 0
+            ? this.tokens[this.tokens.length - 1].offset + 1
+            : 0;
     }
 
     private parseContainerBody(scope: Scope, def: Definition, keyword: string): void {
@@ -536,6 +1011,1023 @@ class ScopeBuilder {
             this.advance();
         }
     }
+
+    /**
+     * Skip tokens until matching ')' is found.
+     */
+    private skipToMatchingParen(): void {
+        let depth = 1;
+        while (this.index < this.tokens.length && depth > 0) {
+            const t = this.peek();
+            if (t?.type === 'lparen') depth++;
+            else if (t?.type === 'rparen') depth--;
+            this.advance();
+        }
+    }
+
+    /**
+     * Skip tokens until matching ']' is found.
+     */
+    private skipToMatchingBracket(): void {
+        let depth = 1;
+        while (this.index < this.tokens.length && depth > 0) {
+            const t = this.peek();
+            if (t?.type === 'lbracket') depth++;
+            else if (t?.type === 'rbracket') depth--;
+            this.advance();
+        }
+    }
+
+    /**
+     * Check if an identifier is a constructor (starts with uppercase).
+     */
+    private isConstructor(name: string): boolean {
+        return name.length > 0 && name[0] >= 'A' && name[0] <= 'Z';
+    }
+
+    /**
+     * Parse a pattern and return the bindings it introduces.
+     * Patterns can be:
+     * - Simple identifier (binding if lowercase, constructor if uppercase)
+     * - Wildcard: _
+     * - Tuple: (p1, p2, ...)
+     * - Record: {field1 = p1, field2 = p2, ...}
+     * - Constructor with argument: Con p
+     */
+    private parsePattern(): Array<{ name: string, offset: number }> {
+        const bindings: Array<{ name: string, offset: number }> = [];
+        const t = this.peek();
+        if (!t) return bindings;
+
+        // Tuple pattern: (p1, p2, ...)
+        if (t.type === 'lparen') {
+            this.advance(); // skip '('
+            while (this.index < this.tokens.length) {
+                const next = this.peek();
+                if (!next) break;
+                if (next.type === 'rparen') {
+                    this.advance(); // skip ')'
+                    break;
+                }
+                // Skip comma if present
+                if (next.type === 'comma') {
+                    this.advance();
+                    continue;
+                }
+                // Only parse pattern if we have something that starts a pattern
+                if (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace') {
+                    const beforeIndex = this.index;
+                    bindings.push(...this.parsePattern());
+                    // Safety: if parsePattern didn't advance, skip this token to avoid infinite loop
+                    if (this.index === beforeIndex) {
+                        this.advance();
+                    }
+                } else {
+                    // Unknown token in tuple - skip it to avoid infinite loop
+                    this.advance();
+                }
+            }
+            return bindings;
+        }
+
+        // Record pattern: {field1 = p1, field2 = p2, ...}
+        if (t.type === 'lbrace') {
+            this.advance(); // skip '{'
+            while (this.index < this.tokens.length) {
+                const next = this.peek();
+                if (!next) break;
+                if (next.type === 'rbrace') {
+                    this.advance(); // skip '}'
+                    break;
+                }
+                // Skip comma if present
+                if (next.type === 'comma') {
+                    this.advance();
+                    continue;
+                }
+                // Handle ... for record wildcard
+                if (next.type === 'dot') {
+                    // Skip ... (three dots)
+                    while (this.peek()?.type === 'dot') {
+                        this.advance();
+                    }
+                    continue;
+                }
+                // Field pattern: field = pattern
+                if (next.type === 'ident') {
+                    this.advance(); // skip field name
+                    if (this.peek()?.type === 'equals') {
+                        this.advance(); // skip '='
+                        const beforeIndex = this.index;
+                        bindings.push(...this.parsePattern());
+                        // Safety: if parsePattern didn't advance, skip to avoid infinite loop
+                        if (this.index === beforeIndex) {
+                            this.advance();
+                        }
+                    }
+                    continue;
+                }
+                // Unknown token in record pattern - skip it to avoid infinite loop
+                this.advance();
+            }
+            return bindings;
+        }
+
+        // Identifier: could be variable binding or constructor
+        if (t.type === 'ident') {
+            const name = t.value;
+            const offset = t.offset;
+            this.advance();
+
+            if (name === '_') {
+                // Wildcard - no binding
+                return bindings;
+            }
+
+            if (this.isConstructor(name)) {
+                // Constructor - parse argument pattern if present
+                const next = this.peek();
+                if (next && (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace')) {
+                    bindings.push(...this.parsePattern());
+                }
+            } else {
+                // Variable binding
+                bindings.push({ name, offset });
+            }
+            return bindings;
+        }
+
+        return bindings;
+    }
+
+    /**
+     * Parse function parameters between function name and '='.
+     * Returns the list of parameters and advances past the '='.
+     * Handles patterns including tuples, records, and constructors.
+     */
+    private parseFunctionParameters(): { params: Array<{ name: string, offset: number }>, bodyStartOffset: number } | null {
+        const params: Array<{ name: string, offset: number }> = [];
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Found the '=' - function body starts after this
+            if (t.type === 'equals') {
+                const bodyStart = t.offset + 1;
+                this.advance(); // skip '='
+                return { params, bodyStartOffset: bodyStart };
+            }
+
+            // Simple identifier parameter (could be pattern or constructor)
+            if (t.type === 'ident') {
+                if (t.value === '_') {
+                    // Wildcard - no binding
+                    this.advance();
+                    continue;
+                }
+                if (this.isConstructor(t.value)) {
+                    // Constructor pattern - parse with parsePattern
+                    params.push(...this.parsePattern());
+                } else {
+                    // Simple variable
+                    params.push({ name: t.value, offset: t.offset });
+                    this.advance();
+                }
+                continue;
+            }
+
+            // Type-level parameter or constraint: [a ::: Type] or [[key] ~ b]
+            // Skip these - they're not value parameters
+            if (t.type === 'lbracket') {
+                this.advance(); // skip '['
+                this.skipToMatchingBracket();
+                continue;
+            }
+
+            // Parenthesized: could be typed parameter (x : type) or tuple pattern (a, b)
+            if (t.type === 'lparen') {
+                // Look ahead to determine if it's a typed parameter or a pattern
+                // Typed parameter has form: (ident : ...) or (pattern : ...)
+                const savedIndex = this.index;
+                this.advance(); // skip '('
+
+                // Try to detect if this is (pattern : type) vs (pattern, pattern, ...)
+                // by looking for a colon that's not inside nested parens
+                let parenDepth = 0;
+                let hasColonAtTopLevel = false;
+                let scanIndex = this.index;
+                while (scanIndex < this.tokens.length) {
+                    const scanToken = this.tokens[scanIndex];
+                    if (scanToken.type === 'lparen') parenDepth++;
+                    else if (scanToken.type === 'rparen') {
+                        if (parenDepth === 0) break;
+                        parenDepth--;
+                    }
+                    else if (scanToken.type === 'colon' && parenDepth === 0) {
+                        hasColonAtTopLevel = true;
+                        break;
+                    }
+                    else if (scanToken.type === 'comma' && parenDepth === 0) {
+                        // It's a tuple pattern
+                        break;
+                    }
+                    scanIndex++;
+                }
+
+                // Restore position and parse appropriately
+                this.index = savedIndex;
+
+                if (hasColonAtTopLevel) {
+                    // Typed parameter: (pattern : type)
+                    this.advance(); // skip '('
+                    params.push(...this.parsePattern());
+                    // Skip to closing ')' (past the type annotation)
+                    this.skipToMatchingParen();
+                } else {
+                    // Tuple pattern or just parenthesized pattern
+                    params.push(...this.parsePattern());
+                }
+                continue;
+            }
+
+            // Record pattern: {field = pattern, ...}
+            if (t.type === 'lbrace') {
+                params.push(...this.parsePattern());
+                continue;
+            }
+
+            // Colon indicates return type annotation - skip until '='
+            if (t.type === 'colon') {
+                this.advance();
+                // Skip type annotation until we hit '='
+                while (this.index < this.tokens.length) {
+                    const next = this.peek();
+                    if (next?.type === 'equals') break;
+                    this.advance();
+                }
+                continue;
+            }
+
+            // Unexpected token - stop parsing parameters
+            break;
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse a function body, looking for nested constructs and stopping at declaration boundaries.
+     */
+    private parseFunctionBody(bodyScope: Scope): void {
+        let structSigDepth = 0; // Track nested struct/sig blocks
+        let parenDepth = 0;     // Track parentheses - stop if we'd go negative
+        let bracketDepth = 0;   // Track brackets - stop if we'd go negative
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Track parentheses - if we see ')' at depth 0, it closes something
+            // from before this function body started, so we should stop
+            if (t.type === 'lparen') {
+                parenDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rparen') {
+                if (parenDepth === 0) {
+                    // This ')' closes something from before the function body
+                    bodyScope.endOffset = t.offset;
+                    return;
+                }
+                parenDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Same for brackets
+            if (t.type === 'lbracket') {
+                bracketDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbracket') {
+                if (bracketDepth === 0) {
+                    // This ']' closes something from before the function body
+                    bodyScope.endOffset = t.offset;
+                    return;
+                }
+                bracketDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Handle let blocks - create a proper scope and parse contents
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance(); // skip 'let'
+                const letScope = this.createScope(bodyScope, letStart, bodyScope.endOffset, 'let');
+                this.parseLetBody(letScope);
+                letScope.endOffset = this.peek()?.offset ?? bodyScope.endOffset;
+                continue;
+            }
+
+            // Track nesting for struct/sig blocks
+            if (t.type === 'struct' || t.type === 'sig') {
+                structSigDepth++;
+                this.advance();
+                continue;
+            }
+
+            if (t.type === 'end') {
+                if (structSigDepth > 0) {
+                    structSigDepth--;
+                    this.advance();
+                    continue;
+                }
+                // End at depth 0 means we're done
+                bodyScope.endOffset = t.offset;
+                return;
+            }
+
+            // Handle nested lambda: fn x => body
+            if (t.type === 'fn') {
+                this.parseLambda(bodyScope);
+                continue;
+            }
+
+            // At depth 0, these signal the end of function body
+            // 'in' means we're inside a let block and hit the expression part
+            if (structSigDepth === 0) {
+                if (t.type === 'keyword' || t.type === 'and' || t.type === 'in') {
+                    bodyScope.endOffset = t.offset;
+                    return;
+                }
+            }
+
+            // Handle monadic binding: pattern <- expr ;
+            // The binding is only visible after the semicolon
+            if (this.isMonadicBinding()) {
+                const bindings = this.parsePattern();
+                if (this.peek()?.type === 'larrow') {
+                    this.advance(); // skip <-
+                }
+
+                // Parse the expression until ';', handling nested constructs
+                const semicolonOffset = this.skipToSemicolonWithBindings(bodyScope);
+                if (semicolonOffset !== null) {
+                    // Add bindings with offset after the semicolon
+                    for (const binding of bindings) {
+                        const bindingDef: Definition = {
+                            name: binding.name,
+                            kind: 'val',
+                            range: new vscode.Range(
+                                this.document.positionAt(binding.offset),
+                                this.document.positionAt(binding.offset + binding.name.length)
+                            ),
+                            selectionRange: new vscode.Range(
+                                this.document.positionAt(binding.offset),
+                                this.document.positionAt(binding.offset + binding.name.length)
+                            ),
+                            offset: semicolonOffset + 1,
+                        };
+                        this.addDefinition(bodyScope, bindingDef);
+                    }
+                }
+                continue;
+            }
+
+            // Handle case statements: case expr of pattern => expr | ...
+            if (t.type === 'case') {
+                this.parseCaseStatement(bodyScope);
+                continue;
+            }
+
+            this.advance();
+        }
+
+        // End of file
+        bodyScope.endOffset = this.tokens[this.tokens.length - 1]?.offset ?? bodyScope.startOffset;
+    }
+
+    /**
+     * Check if current position starts a monadic binding (pattern <- expr).
+     * We need to look ahead to find <- after the pattern.
+     */
+    private isMonadicBinding(): boolean {
+        const t = this.peek();
+        if (!t) return false;
+
+        // Must start with something that can begin a pattern
+        if (t.type !== 'ident' && t.type !== 'lparen' && t.type !== 'lbrace') {
+            return false;
+        }
+
+        // Scan forward to find <- without going past declaration boundaries
+        let scanIndex = this.index;
+        let parenDepth = 0;
+        let braceDepth = 0;
+
+        while (scanIndex < this.tokens.length) {
+            const scanToken = this.tokens[scanIndex];
+
+            if (scanToken.type === 'larrow' && parenDepth === 0 && braceDepth === 0) {
+                return true;
+            }
+
+            // Track nesting
+            if (scanToken.type === 'lparen') parenDepth++;
+            else if (scanToken.type === 'rparen') parenDepth--;
+            else if (scanToken.type === 'lbrace') braceDepth++;
+            else if (scanToken.type === 'rbrace') braceDepth--;
+
+            // Stop at boundaries
+            if (scanToken.type === 'semicolon' || scanToken.type === 'keyword' ||
+                scanToken.type === 'and' || scanToken.type === 'in' ||
+                scanToken.type === 'end' || scanToken.type === 'equals' ||
+                scanToken.type === 'arrow') {
+                return false;
+            }
+
+            // Gone too deep
+            if (parenDepth < 0 || braceDepth < 0) {
+                return false;
+            }
+
+            scanIndex++;
+        }
+
+        return false;
+    }
+
+    /**
+     * Parse a case statement: case expr of pattern => expr | pattern => expr ...
+     */
+    private parseCaseStatement(parentScope: Scope): void {
+        this.advance(); // skip 'case'
+
+        // Parse the scrutinee expression until 'of', handling nested constructs
+        this.parseExpressionUntil(parentScope, 'of');
+        if (this.peek()?.type === 'of') {
+            this.advance(); // skip 'of'
+        }
+
+        // Parse the branches
+        this.parseCaseBranches(parentScope);
+    }
+
+    /**
+     * Parse an expression until a specific token type, handling nested constructs.
+     * Used for case scrutinees, monadic binding RHS, etc.
+     */
+    private parseExpressionUntil(parentScope: Scope, stopToken: Token['type']): void {
+        let parenDepth = 0;
+        let bracketDepth = 0;
+        let braceDepth = 0;
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Check for stop token at depth 0
+            if (t.type === stopToken && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+                return;
+            }
+
+            // Track nesting
+            if (t.type === 'lparen') {
+                parenDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rparen') {
+                if (parenDepth === 0) return;
+                parenDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbracket') {
+                bracketDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbracket') {
+                if (bracketDepth === 0) return;
+                bracketDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbrace') {
+                braceDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbrace') {
+                if (braceDepth === 0) return;
+                braceDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Handle nested constructs that introduce bindings
+            if (t.type === 'fn') {
+                this.parseLambda(parentScope);
+                continue;
+            }
+            if (t.type === 'case') {
+                this.parseCaseStatement(parentScope);
+                continue;
+            }
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance();
+                const letScope = this.createScope(parentScope, letStart, parentScope.endOffset, 'let');
+                this.parseLetBody(letScope);
+                letScope.endOffset = this.peek()?.offset ?? parentScope.endOffset;
+                continue;
+            }
+
+            // Stop at declaration boundaries
+            if (t.type === 'keyword' || t.type === 'and' || t.type === 'in' || t.type === 'end') {
+                return;
+            }
+
+            this.advance();
+        }
+    }
+
+    /**
+     * Parse case branches: pattern => expr | pattern => expr ...
+     */
+    private parseCaseBranches(parentScope: Scope): void {
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Check for end of case (these would end the case expression)
+            if (t.type === 'keyword' || t.type === 'and' || t.type === 'in' ||
+                t.type === 'end' || t.type === 'rparen' || t.type === 'rbracket' ||
+                t.type === 'rbrace' || t.type === 'semicolon' || t.type === 'comma') {
+                return;
+            }
+
+            // Skip leading | if present
+            if (t.type === 'pipe') {
+                this.advance();
+                continue;
+            }
+
+            // Parse the pattern
+            const beforePattern = this.index;
+            const patternBindings = this.parsePattern();
+
+            // Expect =>
+            if (this.peek()?.type === 'arrow') {
+                this.advance(); // skip '=>'
+            } else if (this.index === beforePattern) {
+                // Safety: parsePattern didn't advance and no =>, skip token to avoid infinite loop
+                this.advance();
+                continue;
+            }
+
+            // Create a scope for this branch's pattern bindings
+            const branchStart = this.peek()?.offset ?? parentScope.endOffset;
+            const branchScope = this.createScope(parentScope, branchStart, parentScope.endOffset, 'function-body');
+
+            // Add pattern bindings to the branch scope
+            for (const binding of patternBindings) {
+                const bindingDef: Definition = {
+                    name: binding.name,
+                    kind: 'param',
+                    range: new vscode.Range(
+                        this.document.positionAt(binding.offset),
+                        this.document.positionAt(binding.offset + binding.name.length)
+                    ),
+                    selectionRange: new vscode.Range(
+                        this.document.positionAt(binding.offset),
+                        this.document.positionAt(binding.offset + binding.name.length)
+                    ),
+                    offset: binding.offset,
+                };
+                this.addDefinition(branchScope, bindingDef);
+            }
+
+            // Parse the branch expression
+            this.parseBranchExpression(branchScope);
+
+            // Update branch scope end offset
+            branchScope.endOffset = this.peek()?.offset ?? parentScope.endOffset;
+        }
+    }
+
+    /**
+     * Parse a case branch expression until we hit | or end of case.
+     */
+    private parseBranchExpression(branchScope: Scope): void {
+        let parenDepth = 0;
+        let bracketDepth = 0;
+        let braceDepth = 0;
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Track nesting
+            if (t.type === 'lparen') {
+                parenDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rparen') {
+                if (parenDepth === 0) return; // End of case in parens
+                parenDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbracket') {
+                bracketDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbracket') {
+                if (bracketDepth === 0) return;
+                bracketDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbrace') {
+                braceDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbrace') {
+                if (braceDepth === 0) return;
+                braceDepth--;
+                this.advance();
+                continue;
+            }
+
+            // At depth 0, these tokens end the branch
+            if (parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+                // | starts the next branch
+                if (t.type === 'pipe') {
+                    return;
+                }
+                // These end the case expression entirely
+                if (t.type === 'keyword' || t.type === 'and' || t.type === 'in' ||
+                    t.type === 'end' || t.type === 'semicolon' || t.type === 'comma') {
+                    return;
+                }
+            }
+
+            // Handle nested constructs
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance();
+                const letScope = this.createScope(branchScope, letStart, branchScope.endOffset, 'let');
+                this.parseLetBody(letScope);
+                letScope.endOffset = this.peek()?.offset ?? branchScope.endOffset;
+                continue;
+            }
+
+            if (t.type === 'fn') {
+                this.parseLambda(branchScope);
+                continue;
+            }
+
+            if (t.type === 'case') {
+                this.parseCaseStatement(branchScope);
+                continue;
+            }
+
+            this.advance();
+        }
+    }
+
+    /**
+     * Skip tokens until we find a semicolon at the right nesting level.
+     * Parses nested constructs (fn, case, let) to capture their bindings.
+     * Returns the offset of the semicolon, or null if not found.
+     */
+    private skipToSemicolonWithBindings(parentScope: Scope): number | null {
+        let parenDepth = 0;
+        let bracketDepth = 0;
+        let braceDepth = 0;
+        let structSigDepth = 0;
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Track nesting
+            if (t.type === 'lparen') {
+                parenDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rparen') {
+                if (parenDepth === 0) return null;
+                parenDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbracket') {
+                bracketDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbracket') {
+                if (bracketDepth === 0) return null;
+                bracketDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbrace') {
+                braceDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbrace') {
+                if (braceDepth === 0) return null;
+                braceDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'struct' || t.type === 'sig') {
+                structSigDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'end') {
+                if (structSigDepth > 0) {
+                    structSigDepth--;
+                    this.advance();
+                    continue;
+                }
+                return null;
+            }
+
+            // Handle nested constructs that introduce bindings
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance();
+                const letScope = this.createScope(parentScope, letStart, parentScope.endOffset, 'let');
+                this.parseLetBody(letScope);
+                letScope.endOffset = this.peek()?.offset ?? parentScope.endOffset;
+                continue;
+            }
+            if (t.type === 'fn') {
+                this.parseLambda(parentScope);
+                continue;
+            }
+            if (t.type === 'case') {
+                this.parseCaseStatement(parentScope);
+                continue;
+            }
+
+            // Found semicolon at the right nesting level
+            if (t.type === 'semicolon' && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0 && structSigDepth === 0) {
+                const offset = t.offset;
+                this.advance(); // skip the semicolon
+                return offset;
+            }
+
+            // Stop conditions
+            if (t.type === 'keyword' || t.type === 'and' || t.type === 'in') {
+                return null;
+            }
+
+            this.advance();
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the body of a let block, handling declarations and the in...end portion.
+     */
+    private parseLetBody(letScope: Scope): void {
+        // Parse declarations until 'in'
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            if (t.type === 'in') {
+                this.advance(); // skip 'in'
+                break;
+            }
+
+            if (t.type === 'keyword') {
+                this.parseDeclaration(letScope);
+                continue;
+            }
+
+            // Handle nested let
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance();
+                const innerLetScope = this.createScope(letScope, letStart, letScope.endOffset, 'let');
+                this.parseLetBody(innerLetScope);
+                innerLetScope.endOffset = this.peek()?.offset ?? letScope.endOffset;
+                continue;
+            }
+
+            this.advance();
+        }
+
+        // Parse the expression part (in ... end) - look for lambdas and nested lets
+        let depth = 0;
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            if (t.type === 'let') {
+                const letStart = t.offset;
+                this.advance();
+                const innerLetScope = this.createScope(letScope, letStart, letScope.endOffset, 'let');
+                this.parseLetBody(innerLetScope);
+                innerLetScope.endOffset = this.peek()?.offset ?? letScope.endOffset;
+                continue;
+            }
+
+            if (t.type === 'struct' || t.type === 'sig') {
+                depth++;
+                this.advance();
+                continue;
+            }
+
+            if (t.type === 'end') {
+                if (depth > 0) {
+                    depth--;
+                    this.advance();
+                    continue;
+                }
+                // This 'end' closes our let block
+                this.advance();
+                return;
+            }
+
+            if (t.type === 'fn') {
+                this.parseLambda(letScope);
+                continue;
+            }
+
+            // Handle case statements
+            if (t.type === 'case') {
+                this.parseCaseStatement(letScope);
+                continue;
+            }
+
+            // Handle monadic binding: pattern <- expr ;
+            if (this.isMonadicBinding()) {
+                const bindings = this.parsePattern();
+                if (this.peek()?.type === 'larrow') {
+                    this.advance(); // skip <-
+                }
+
+                const semicolonOffset = this.skipToSemicolonWithBindings(letScope);
+                if (semicolonOffset !== null) {
+                    for (const binding of bindings) {
+                        const bindingDef: Definition = {
+                            name: binding.name,
+                            kind: 'val',
+                            range: new vscode.Range(
+                                this.document.positionAt(binding.offset),
+                                this.document.positionAt(binding.offset + binding.name.length)
+                            ),
+                            selectionRange: new vscode.Range(
+                                this.document.positionAt(binding.offset),
+                                this.document.positionAt(binding.offset + binding.name.length)
+                            ),
+                            offset: semicolonOffset + 1,
+                        };
+                        this.addDefinition(letScope, bindingDef);
+                    }
+                }
+                continue;
+            }
+
+            this.advance();
+        }
+    }
+
+    /**
+     * Parse a lambda expression: fn x => body
+     */
+    private parseLambda(parentScope: Scope): void {
+        const fnToken = this.peek();
+        if (fnToken?.type !== 'fn') return;
+        this.advance(); // skip 'fn'
+
+        const params: Array<{ name: string, offset: number }> = [];
+
+        // Parse parameters until '=>'
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            if (t.type === 'arrow') {
+                this.advance(); // skip '=>'
+                break;
+            }
+
+            // Simple identifier (variable or constructor pattern)
+            if (t.type === 'ident') {
+                if (t.value === '_') {
+                    this.advance();
+                    continue;
+                }
+                if (this.isConstructor(t.value)) {
+                    params.push(...this.parsePattern());
+                } else {
+                    params.push({ name: t.value, offset: t.offset });
+                    this.advance();
+                }
+                continue;
+            }
+
+            // Type-level parameter: [a] or [a ::: Type]
+            if (t.type === 'lbracket') {
+                this.advance(); // skip '['
+                this.skipToMatchingBracket();
+                continue;
+            }
+
+            // Parenthesized pattern or typed parameter
+            if (t.type === 'lparen') {
+                // Check if it's (pattern : type) or just a pattern
+                const savedIndex = this.index;
+                this.advance();
+
+                let parenDepth = 0;
+                let hasColonAtTopLevel = false;
+                let scanIndex = this.index;
+                while (scanIndex < this.tokens.length) {
+                    const scanToken = this.tokens[scanIndex];
+                    if (scanToken.type === 'lparen') parenDepth++;
+                    else if (scanToken.type === 'rparen') {
+                        if (parenDepth === 0) break;
+                        parenDepth--;
+                    }
+                    else if (scanToken.type === 'colon' && parenDepth === 0) {
+                        hasColonAtTopLevel = true;
+                        break;
+                    }
+                    else if (scanToken.type === 'comma' && parenDepth === 0) {
+                        break;
+                    }
+                    scanIndex++;
+                }
+
+                this.index = savedIndex;
+
+                if (hasColonAtTopLevel) {
+                    this.advance(); // skip '('
+                    params.push(...this.parsePattern());
+                    this.skipToMatchingParen();
+                } else {
+                    params.push(...this.parsePattern());
+                }
+                continue;
+            }
+
+            // Record pattern
+            if (t.type === 'lbrace') {
+                params.push(...this.parsePattern());
+                continue;
+            }
+
+            this.advance();
+        }
+
+        if (params.length === 0) return;
+
+        // Create function-body scope for the lambda
+        const bodyStartOffset = this.peek()?.offset ?? parentScope.endOffset;
+        const lambdaScope = this.createScope(parentScope, bodyStartOffset, parentScope.endOffset, 'function-body');
+
+        // Add parameters to the lambda scope
+        for (const param of params) {
+            const paramDef: Definition = {
+                name: param.name,
+                kind: 'param',
+                range: new vscode.Range(
+                    this.document.positionAt(param.offset),
+                    this.document.positionAt(param.offset + param.name.length)
+                ),
+                selectionRange: new vscode.Range(
+                    this.document.positionAt(param.offset),
+                    this.document.positionAt(param.offset + param.name.length)
+                ),
+                offset: param.offset,
+            };
+            this.addDefinition(lambdaScope, paramDef);
+        }
+
+        // Parse the lambda body
+        this.parseFunctionBody(lambdaScope);
+    }
 }
 
 /**
@@ -629,6 +2121,35 @@ class DefinitionResolver {
     }
 
     /**
+     * Check if the given offset is at a definition site for the given name.
+     * Returns the definition if found, null otherwise.
+     */
+    public findDefinitionAt(name: string, offset: number): Definition | null {
+        return this.findDefinitionAtRecursive(this.rootScope, name, offset);
+    }
+
+    private findDefinitionAtRecursive(scope: Scope, name: string, offset: number): Definition | null {
+        const defs = scope.definitions.get(name);
+        if (defs) {
+            for (const def of defs) {
+                // Check if offset is within the definition's name
+                const defStart = def.offset;
+                // For definitions, the stored offset is the visibility offset, but selectionRange has the actual position
+                const selStart = this.document.offsetAt(def.selectionRange.start);
+                const selEnd = this.document.offsetAt(def.selectionRange.end);
+                if (offset >= selStart && offset < selEnd) {
+                    return def;
+                }
+            }
+        }
+        for (const child of scope.children) {
+            const found = this.findDefinitionAtRecursive(child, name, offset);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    /**
      * Resolve a qualified name like A.B.c.
      */
     public resolveQualifiedName(parts: string[], scope: Scope, usageOffset: number): Definition | null {
@@ -715,6 +2236,15 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
             const cursorOffset = document.offsetAt(position);
             const resolver = new DefinitionResolver(rootScope, document);
             const scope = resolver.findScopeAt(cursorOffset);
+
+            // Check if we're clicking on a definition site itself
+            if (qualifiedName.parts.length === 1) {
+                const defAtCursor = resolver.findDefinitionAt(qualifiedName.parts[0], cursorOffset);
+                if (defAtCursor) {
+                    // We're on a definition site - return null (already at definition)
+                    return null;
+                }
+            }
 
             // Resolve the name
             let definition: Definition | null;
