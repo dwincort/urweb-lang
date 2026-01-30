@@ -3,6 +3,7 @@
   "displayName": "urweb-language",
   "description": "Syntax highlighting and code navigation for Ur/Web",
   "version": "0.0.4",
+  "license": "MIT",
   "publisher": "DanWC",
   "engines": {
     "vscode": "^1.83.0"
