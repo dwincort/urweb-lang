@@ -630,21 +630,42 @@ class ScopeBuilder {
             const patternBindings = this.parsePattern();
 
             // Skip type annotation if present
+            // In .urs signature files, there's no '=' - just 'val name : type'
+            // So we also break on 'keyword' (next declaration) or 'end'
             if (this.peek()?.type === 'colon') {
                 this.advance();
                 while (this.index < this.tokens.length) {
                     const next = this.peek();
-                    if (next?.type === 'equals') break;
+                    if (next?.type === 'equals' || next?.type === 'keyword' || next?.type === 'end') break;
                     this.advance();
                 }
             }
 
-            // Skip '='
-            if (this.peek()?.type === 'equals') {
-                this.advance();
+            // Check if there's an '=' (implementation) or not (signature)
+            const hasEquals = this.peek()?.type === 'equals';
+            if (hasEquals) {
+                this.advance(); // skip '='
             }
 
-            if (isRecursiveVal) {
+            if (!hasEquals) {
+                // Signature file: no RHS to parse, just add the bindings
+                for (const binding of patternBindings) {
+                    const def: Definition = {
+                        name: binding.name,
+                        kind: 'val',
+                        range: new vscode.Range(
+                            this.document.positionAt(binding.offset),
+                            this.document.positionAt(binding.offset + binding.name.length)
+                        ),
+                        selectionRange: new vscode.Range(
+                            this.document.positionAt(binding.offset),
+                            this.document.positionAt(binding.offset + binding.name.length)
+                        ),
+                        offset: binding.offset,
+                    };
+                    this.addDefinition(scope, def);
+                }
+            } else if (isRecursiveVal) {
                 // val rec - bindings ARE visible in RHS (for recursion)
                 for (const binding of patternBindings) {
                     const def: Definition = {
@@ -2031,15 +2052,121 @@ class ScopeBuilder {
 }
 
 /**
+ * Manages discovery and caching of external .urs files.
+ */
+class FileManager {
+    private fileCache = new Map<string, { scope: Scope, uri: vscode.Uri } | null>();
+    private basisScope: Scope | null = null;
+    private topScope: Scope | null = null;
+    private basisUri: vscode.Uri | null = null;
+    private topUri: vscode.Uri | null = null;
+    private stdlibDir: vscode.Uri | null = null;  // Directory containing basis.urs
+
+    async initialize(): Promise<void> {
+        await this.findAndParseBasisFiles();
+    }
+
+    private async findAndParseBasisFiles(): Promise<void> {
+        const basisFiles = await vscode.workspace.findFiles('**/basis.urs', null, 1);
+        const topFiles = await vscode.workspace.findFiles('**/top.urs', null, 1);
+
+        if (basisFiles.length > 0) {
+            this.basisUri = basisFiles[0];
+            // Store the stdlib directory for looking up other modules
+            this.stdlibDir = vscode.Uri.joinPath(this.basisUri, '..');
+            const doc = await vscode.workspace.openTextDocument(this.basisUri);
+            this.basisScope = this.parseDocument(doc, 'Basis');
+        }
+        if (topFiles.length > 0) {
+            this.topUri = topFiles[0];
+            const doc = await vscode.workspace.openTextDocument(this.topUri);
+            this.topScope = this.parseDocument(doc, 'Top');
+        }
+    }
+
+    private parseDocument(doc: vscode.TextDocument, name?: string): Scope {
+        const tokens = tokenize(doc.getText());
+        const builder = new ScopeBuilder(doc, tokens);
+        const scope = builder.build();
+        if (name) scope.name = name;
+        return scope;
+    }
+
+    /**
+     * Convert module name to filename: Foo -> foo.urs
+     */
+    private moduleToFilename(moduleName: string): string {
+        return moduleName.charAt(0).toLowerCase() + moduleName.slice(1) + '.urs';
+    }
+
+    /**
+     * Find and parse a module file by name (e.g., "Foo" -> find "foo.urs")
+     */
+    async getModuleScope(moduleName: string): Promise<{ scope: Scope, uri: vscode.Uri } | null> {
+        // Check cache first
+        if (this.fileCache.has(moduleName)) {
+            return this.fileCache.get(moduleName)!;
+        }
+
+        const filename = this.moduleToFilename(moduleName);
+        let uri: vscode.Uri | null = null;
+
+        // First, search in the workspace
+        const files = await vscode.workspace.findFiles(`**/${filename}`, null, 1);
+        if (files.length > 0) {
+            uri = files[0];
+        }
+
+        // If not found in workspace, try the standard library directory
+        if (!uri && this.stdlibDir) {
+            const stdlibPath = vscode.Uri.joinPath(this.stdlibDir, filename);
+            try {
+                await vscode.workspace.fs.stat(stdlibPath);
+                uri = stdlibPath;
+            } catch {
+                // File doesn't exist in stdlib
+            }
+        }
+
+        if (!uri) {
+            this.fileCache.set(moduleName, null);
+            return null;
+        }
+
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const scope = this.parseDocument(doc, moduleName);
+
+        const result = { scope, uri };
+        this.fileCache.set(moduleName, result);
+        return result;
+    }
+
+    getBasisScope(): Scope | null { return this.basisScope; }
+    getTopScope(): Scope | null { return this.topScope; }
+    getBasisUri(): vscode.Uri | null { return this.basisUri; }
+    getTopUri(): vscode.Uri | null { return this.topUri; }
+}
+
+/**
+ * Result of resolving a definition, including cross-file info.
+ */
+interface ResolvedDefinition {
+    definition: Definition;
+    uri: vscode.Uri;  // The file containing the definition
+}
+
+/**
  * Resolver for finding definitions given a position.
  */
 class DefinitionResolver {
     private rootScope: Scope;
     private document: vscode.TextDocument;
+    private fileManager: FileManager;
 
-    constructor(rootScope: Scope, document: vscode.TextDocument) {
+    constructor(rootScope: Scope, document: vscode.TextDocument, fileManager: FileManager) {
         this.rootScope = rootScope;
         this.document = document;
+        this.fileManager = fileManager;
     }
 
     /**
@@ -2060,9 +2187,41 @@ class DefinitionResolver {
 
     /**
      * Resolve a simple name in the given scope at the given usage offset.
-     * Walks up the scope chain, checking direct definitions and opened modules.
+     * Walks up the scope chain, checking direct definitions, opened modules,
+     * and standard library scopes (Top, Basis).
      */
-    public resolveSimpleName(name: string, scope: Scope, usageOffset: number): Definition | null {
+    public async resolveSimpleName(name: string, scope: Scope, usageOffset: number): Promise<ResolvedDefinition | null> {
+        // 1. Check local scopes
+        const localResult = this.resolveInLocalScopes(name, scope, usageOffset);
+        if (localResult) return { definition: localResult, uri: this.document.uri };
+
+        // 2. Check opened modules (including external files)
+        const openedResult = await this.resolveInOpenedModules(name, scope, usageOffset);
+        if (openedResult) return openedResult;
+
+        // 3. Check Top scope (standard library - more specific)
+        const topScope = this.fileManager.getTopScope();
+        const topUri = this.fileManager.getTopUri();
+        if (topScope && topUri) {
+            const result = this.searchInModuleScope(name, topScope);
+            if (result) return { definition: result, uri: topUri };
+        }
+
+        // 4. Check Basis scope (standard library - base types)
+        const basisScope = this.fileManager.getBasisScope();
+        const basisUri = this.fileManager.getBasisUri();
+        if (basisScope && basisUri) {
+            const result = this.searchInModuleScope(name, basisScope);
+            if (result) return { definition: result, uri: basisUri };
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve a name in local scopes only (no external files).
+     */
+    private resolveInLocalScopes(name: string, scope: Scope, usageOffset: number): Definition | null {
         let currentScope: Scope | null = scope;
 
         while (currentScope) {
@@ -2077,14 +2236,13 @@ class DefinitionResolver {
                 }
             }
 
-            // Check opened modules (later opens shadow earlier ones)
+            // Check opened modules within this scope (local modules only here)
             for (let i = currentScope.opens.length - 1; i >= 0; i--) {
                 const opened = currentScope.opens[i];
                 if (opened.offset < usageOffset) {
-                    // Resolve the module reference first
-                    const moduleRef = this.resolveSimpleName(opened.moduleRef.name, currentScope, opened.offset);
+                    // Try to resolve the module reference locally
+                    const moduleRef = this.resolveInLocalScopes(opened.moduleRef.name, currentScope, opened.offset);
                     if (moduleRef?.moduleScope) {
-                        // Search in the module's scope (no offset restriction inside module)
                         const result = this.searchInModuleScope(name, moduleRef.moduleScope);
                         if (result) return result;
                     }
@@ -2095,6 +2253,56 @@ class DefinitionResolver {
         }
 
         return null;
+    }
+
+    /**
+     * Resolve a name in opened modules, including external .urs files.
+     */
+    private async resolveInOpenedModules(name: string, scope: Scope, usageOffset: number): Promise<ResolvedDefinition | null> {
+        let currentScope: Scope | null = scope;
+
+        while (currentScope) {
+            // Check opened modules (later opens shadow earlier ones)
+            for (let i = currentScope.opens.length - 1; i >= 0; i--) {
+                const opened = currentScope.opens[i];
+                if (opened.offset < usageOffset) {
+                    const moduleName = opened.moduleRef.name;
+
+                    // Try to resolve the module locally first
+                    let moduleScope = this.resolveModuleScope(moduleName, currentScope, opened.offset);
+                    let moduleUri: vscode.Uri | null = null;
+
+                    // If not found locally, check external files
+                    if (!moduleScope) {
+                        const external = await this.fileManager.getModuleScope(moduleName);
+                        if (external) {
+                            moduleScope = external.scope;
+                            moduleUri = external.uri;
+                        }
+                    }
+
+                    if (moduleScope) {
+                        const result = this.searchInModuleScope(name, moduleScope);
+                        if (result) {
+                            return {
+                                definition: result,
+                                uri: moduleUri ?? this.document.uri
+                            };
+                        }
+                    }
+                }
+            }
+            currentScope = currentScope.parent;
+        }
+        return null;
+    }
+
+    /**
+     * Resolve a module name to its scope (local modules only).
+     */
+    private resolveModuleScope(name: string, scope: Scope, offset: number): Scope | null {
+        const def = this.resolveInLocalScopes(name, scope, offset);
+        return def?.moduleScope ?? null;
     }
 
     /**
@@ -2133,7 +2341,6 @@ class DefinitionResolver {
         if (defs) {
             for (const def of defs) {
                 // Check if offset is within the definition's name
-                const defStart = def.offset;
                 // For definitions, the stored offset is the visibility offset, but selectionRange has the actual position
                 const selStart = this.document.offsetAt(def.selectionRange.start);
                 const selEnd = this.document.offsetAt(def.selectionRange.end);
@@ -2152,22 +2359,78 @@ class DefinitionResolver {
     /**
      * Resolve a qualified name like A.B.c.
      */
-    public resolveQualifiedName(parts: string[], scope: Scope, usageOffset: number): Definition | null {
+    public async resolveQualifiedName(parts: string[], scope: Scope, usageOffset: number): Promise<ResolvedDefinition | null> {
         if (parts.length === 0) return null;
 
-        // Resolve the first part in the current scope
-        let currentDef = this.resolveSimpleName(parts[0], scope, usageOffset);
-        if (!currentDef) return null;
+        const moduleName = parts[0];
 
-        // Resolve remaining parts within module scopes
-        for (let i = 1; i < parts.length; i++) {
-            if (!currentDef.moduleScope) return null;
-            const nextDef = this.searchInModuleScope(parts[i], currentDef.moduleScope);
-            if (!nextDef) return null;
-            currentDef = nextDef;
+        // 1. Try to resolve first part as local module
+        const localModuleDef = this.resolveInLocalScopes(moduleName, scope, usageOffset);
+
+        // 2. Handle special cases: Basis and Top qualified access
+        if (!localModuleDef) {
+            if (moduleName === 'Basis') {
+                const basisScope = this.fileManager.getBasisScope();
+                const basisUri = this.fileManager.getBasisUri();
+                if (basisScope && basisUri && parts.length > 1) {
+                    const result = this.resolveInScope(parts.slice(1), basisScope);
+                    if (result) return { definition: result, uri: basisUri };
+                }
+                return null;
+            }
+            if (moduleName === 'Top') {
+                const topScope = this.fileManager.getTopScope();
+                const topUri = this.fileManager.getTopUri();
+                if (topScope && topUri && parts.length > 1) {
+                    const result = this.resolveInScope(parts.slice(1), topScope);
+                    if (result) return { definition: result, uri: topUri };
+                }
+                return null;
+            }
         }
 
-        return currentDef;
+        // 3. If not found locally, look for external .urs file
+        if (!localModuleDef || !localModuleDef.moduleScope) {
+            const external = await this.fileManager.getModuleScope(moduleName);
+            if (external && parts.length > 1) {
+                const result = this.resolveInScope(parts.slice(1), external.scope);
+                if (result) return { definition: result, uri: external.uri };
+            }
+            // If parts.length === 1, we're looking for the module itself
+            // (e.g., just "Foo" not "Foo.bar")
+            if (external && parts.length === 1) {
+                // Return a synthetic definition for the module itself
+                // This case is rare - usually we're looking for members
+                return null;
+            }
+            return null;
+        }
+
+        // 4. Found local module - resolve remaining parts
+        if (parts.length === 1) {
+            return { definition: localModuleDef, uri: this.document.uri };
+        }
+        const result = this.resolveInScope(parts.slice(1), localModuleDef.moduleScope);
+        if (result) return { definition: result, uri: this.document.uri };
+        return null;
+    }
+
+    /**
+     * Resolve remaining parts within a scope.
+     */
+    private resolveInScope(parts: string[], scope: Scope): Definition | null {
+        if (parts.length === 0) return null;
+
+        const def = this.searchInModuleScope(parts[0], scope);
+        if (!def) return null;
+
+        if (parts.length === 1) return def;
+
+        // Nested module access
+        if (def.moduleScope) {
+            return this.resolveInScope(parts.slice(1), def.moduleScope);
+        }
+        return null;
     }
 }
 
@@ -2216,11 +2479,21 @@ function getQualifiedNameAtPosition(document: vscode.TextDocument, position: vsc
  * VS Code Definition Provider for Ur/Web.
  */
 export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
-    public provideDefinition(
+    private fileManager: FileManager;
+
+    constructor() {
+        this.fileManager = new FileManager();
+    }
+
+    async initialize(): Promise<void> {
+        await this.fileManager.initialize();
+    }
+
+    public async provideDefinition(
         document: vscode.TextDocument,
         position: vscode.Position,
         _token: vscode.CancellationToken
-    ): vscode.ProviderResult<vscode.Definition> {
+    ): Promise<vscode.Definition | null> {
         try {
             // Get the qualified name at the cursor position
             const qualifiedName = getQualifiedNameAtPosition(document, position);
@@ -2234,7 +2507,7 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
 
             // Find the scope at the cursor position
             const cursorOffset = document.offsetAt(position);
-            const resolver = new DefinitionResolver(rootScope, document);
+            const resolver = new DefinitionResolver(rootScope, document, this.fileManager);
             const scope = resolver.findScopeAt(cursorOffset);
 
             // Check if we're clicking on a definition site itself
@@ -2246,18 +2519,18 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
                 }
             }
 
-            // Resolve the name
-            let definition: Definition | null;
+            // Resolve the name (now async for external files)
+            let resolved: ResolvedDefinition | null;
             if (qualifiedName.parts.length === 1) {
-                definition = resolver.resolveSimpleName(qualifiedName.parts[0], scope, cursorOffset);
+                resolved = await resolver.resolveSimpleName(qualifiedName.parts[0], scope, cursorOffset);
             } else {
-                definition = resolver.resolveQualifiedName(qualifiedName.parts, scope, cursorOffset);
+                resolved = await resolver.resolveQualifiedName(qualifiedName.parts, scope, cursorOffset);
             }
 
-            if (!definition) return null;
+            if (!resolved) return null;
 
-            // Return the location
-            return new vscode.Location(document.uri, definition.selectionRange);
+            // Return the location with the correct URI
+            return new vscode.Location(resolved.uri, resolved.definition.selectionRange);
         } catch (e) {
             console.error('UrWeb definition provider error:', e);
             return null;

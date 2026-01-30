@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { UrWebDocumentSymbolProvider } from './symbolProvider';
 import { UrWebDefinitionProvider } from './definitionProvider';
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
     // Register the document symbol provider for .ur and .urs files
     const symbolProvider = new UrWebDocumentSymbolProvider();
 
@@ -22,6 +22,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Register the definition provider for .ur and .urs files
     const definitionProvider = new UrWebDefinitionProvider();
+    await definitionProvider.initialize();
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
