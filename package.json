@@ -65,16 +65,43 @@
     "snippets": [{
       "language": "ur",
       "path": "./snippets/urweb-snippets.json"
-    }]
+    }],
+    "configuration": {
+      "title": "Ur/Web",
+      "properties": {
+        "urweb.path": {
+          "type": "string",
+          "default": "urweb",
+          "description": "Path to urweb executable"
+        },
+        "urweb.enableLsp": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable LSP features (requires urweb installed)"
+        },
+        "urweb.urpFile": {
+          "type": "string",
+          "default": "",
+          "description": "Path to .urp project file, relative to workspace root (e.g., 'src/myproject.urp')"
+        }
+      }
+    }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "compile": "npm run esbuild-base -- --sourcemap",
+    "watch": "npm run esbuild-base -- --sourcemap --watch",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "compile-tsc": "tsc -p ./",
+    "watch-tsc": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.83.0",
+    "esbuild": "^0.20.0",
     "typescript": "^5.0.0"
   }
 }

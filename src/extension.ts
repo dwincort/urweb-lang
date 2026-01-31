@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { UrWebDocumentSymbolProvider } from './symbolProvider';
 import { UrWebDefinitionProvider } from './definitionProvider';
+import { startLspClient, stopLspClient } from './lspClient';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     // Register the document symbol provider for .ur and .urs files
@@ -37,8 +38,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             definitionProvider
         )
     );
+
+    // Start LSP client (optional - graceful degradation if urweb not installed)
+    try {
+        const client = await startLspClient(context);
+        if (client) {
+            console.log('Ur/Web LSP client started successfully');
+        }
+    } catch (e) {
+        // LSP failed to start - extension still works for syntax highlighting, outline, go-to-def
+        console.warn('Ur/Web LSP not available:', e instanceof Error ? e.message : e);
+    }
 }
 
-export function deactivate(): void {
-    // Nothing to clean up
+export async function deactivate(): Promise<void> {
+    await stopLspClient();
 }
