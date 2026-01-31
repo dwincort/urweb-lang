@@ -13,7 +13,7 @@ interface Token {
 /**
  * Kinds of definitions we track.
  */
-type DefinitionKind = 'val' | 'fun' | 'type' | 'datatype' | 'con' | 'structure' | 'signature' | 'functor' | 'table' | 'view' | 'sequence' | 'cookie' | 'style' | 'task' | 'class' | 'policy' | 'functor-param' | 'param';
+type DefinitionKind = 'val' | 'fun' | 'type' | 'datatype' | 'con' | 'constructor' | 'structure' | 'signature' | 'functor' | 'table' | 'view' | 'sequence' | 'cookie' | 'style' | 'task' | 'class' | 'policy' | 'functor-param' | 'param';
 
 /**
  * A definition (binding) in the scope tree.
@@ -735,9 +735,36 @@ class ScopeBuilder {
             // fun is always recursive - binding visible in body
             this.addDefinition(scope, def);
             this.parseFunDeclaration(scope, kind);
+        } else if (keyword === 'datatype') {
+            // Handle datatype declaration with constructors
+            this.addDefinition(scope, def);
+            this.parseDatatypeConstructors(scope);
+            // Handle 'and' for mutually recursive datatypes
+            while (this.peek()?.type === 'and') {
+                this.advance(); // skip 'and'
+                const andNameToken = this.peek();
+                if (andNameToken?.type === 'ident') {
+                    this.advance();
+                    const andDef: Definition = {
+                        name: andNameToken.value,
+                        kind,
+                        range: new vscode.Range(
+                            this.document.positionAt(andNameToken.offset),
+                            this.document.positionAt(andNameToken.offset + andNameToken.value.length)
+                        ),
+                        selectionRange: new vscode.Range(
+                            this.document.positionAt(andNameToken.offset),
+                            this.document.positionAt(andNameToken.offset + andNameToken.value.length)
+                        ),
+                        offset: andNameToken.offset,
+                    };
+                    this.addDefinition(scope, andDef);
+                    this.parseDatatypeConstructors(scope);
+                }
+            }
         } else {
             this.addDefinition(scope, def);
-            // Handle 'and' for mutual recursion (datatype, type, etc.)
+            // Handle 'and' for mutual recursion (type, etc.)
             while (this.peek()?.type === 'and') {
                 this.advance(); // skip 'and'
                 const andNameToken = this.peek();
@@ -759,6 +786,136 @@ class ScopeBuilder {
                     this.addDefinition(scope, andDef);
                 }
             }
+        }
+    }
+
+    /**
+     * Parse datatype constructors after the datatype name.
+     * Syntax: datatype name [type_params] = Con1 [of type] | Con2 [of type] | ...
+     */
+    private parseDatatypeConstructors(scope: Scope): void {
+        // Skip type parameters until we find '='
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            if (t.type === 'equals') {
+                this.advance(); // skip '='
+                break;
+            }
+
+            // Stop at declaration boundaries
+            if (t.type === 'keyword' || t.type === 'and' || t.type === 'end') {
+                return;
+            }
+
+            this.advance();
+        }
+
+        // Parse constructors: Con1 [of type] | Con2 [of type] | ...
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Constructor name (uppercase identifier)
+            if (t.type === 'ident' && this.isConstructor(t.value)) {
+                const conDef: Definition = {
+                    name: t.value,
+                    kind: 'constructor',
+                    range: new vscode.Range(
+                        this.document.positionAt(t.offset),
+                        this.document.positionAt(t.offset + t.value.length)
+                    ),
+                    selectionRange: new vscode.Range(
+                        this.document.positionAt(t.offset),
+                        this.document.positionAt(t.offset + t.value.length)
+                    ),
+                    offset: t.offset,
+                };
+                this.addDefinition(scope, conDef);
+                this.advance();
+
+                // Check for 'of' followed by type
+                if (this.peek()?.type === 'of') {
+                    this.advance(); // skip 'of'
+                    // Skip the type expression until we hit '|', 'and', or a declaration boundary
+                    this.skipTypeExpression();
+                }
+                continue;
+            }
+
+            // Pipe separates constructors
+            if (t.type === 'pipe') {
+                this.advance();
+                continue;
+            }
+
+            // Stop at declaration boundaries
+            if (t.type === 'keyword' || t.type === 'and' || t.type === 'end') {
+                return;
+            }
+
+            // Unknown token in datatype - advance to avoid infinite loop
+            this.advance();
+        }
+    }
+
+    /**
+     * Skip a type expression, handling nested parentheses and brackets.
+     * Stops at '|', 'and', declaration keywords, or 'end'.
+     */
+    private skipTypeExpression(): void {
+        let parenDepth = 0;
+        let bracketDepth = 0;
+        let braceDepth = 0;
+
+        while (this.index < this.tokens.length) {
+            const t = this.peek();
+            if (!t) break;
+
+            // Track nesting
+            if (t.type === 'lparen') {
+                parenDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rparen') {
+                if (parenDepth === 0) return;
+                parenDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbracket') {
+                bracketDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbracket') {
+                if (bracketDepth === 0) return;
+                bracketDepth--;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'lbrace') {
+                braceDepth++;
+                this.advance();
+                continue;
+            }
+            if (t.type === 'rbrace') {
+                if (braceDepth === 0) return;
+                braceDepth--;
+                this.advance();
+                continue;
+            }
+
+            // Stop at these tokens when at depth 0
+            if (parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+                if (t.type === 'pipe' || t.type === 'and' || t.type === 'keyword' || t.type === 'end') {
+                    return;
+                }
+            }
+
+            this.advance();
         }
     }
 
