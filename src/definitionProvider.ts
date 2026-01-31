@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
  * Token types for the lexer (extended from symbolProvider with 'dot' and 'open').
  */
 interface Token {
-    type: 'keyword' | 'ident' | 'struct' | 'sig' | 'end' | 'let' | 'in' | 'lparen' | 'rparen' | 'lbracket' | 'rbracket' | 'lbrace' | 'rbrace' | 'colon' | 'equals' | 'dot' | 'open' | 'and' | 'fn' | 'arrow' | 'larrow' | 'semicolon' | 'comma' | 'pipe' | 'case' | 'of' | 'other';
+    type: 'keyword' | 'ident' | 'struct' | 'sig' | 'end' | 'let' | 'in' | 'lparen' | 'rparen' | 'lbracket' | 'rbracket' | 'lbrace' | 'rbrace' | 'colon' | 'equals' | 'dot' | 'open' | 'and' | 'fn' | 'arrow' | 'larrow' | 'semicolon' | 'comma' | 'pipe' | 'case' | 'of' | 'if' | 'then' | 'else' | 'other';
     value: string;
     offset: number;
     line: number;
@@ -146,6 +146,9 @@ function tokenizeIdentifier(state: TokenizerState): void {
     else if (value === 'fn') type = 'fn';
     else if (value === 'case') type = 'case';
     else if (value === 'of') type = 'of';
+    else if (value === 'if') type = 'if';
+    else if (value === 'then') type = 'then';
+    else if (value === 'else') type = 'else';
     else if (DECLARATION_KINDS.has(value)) type = 'keyword';
 
     state.tokens.push({ type, value, offset: start, line: state.line });
@@ -1463,11 +1466,12 @@ class ScopeBuilder {
             else if (scanToken.type === 'lbrace') braceDepth++;
             else if (scanToken.type === 'rbrace') braceDepth--;
 
-            // Stop at boundaries
+            // Stop at boundaries (expression keywords like if/then/else cannot start monadic bindings)
             if (scanToken.type === 'semicolon' || scanToken.type === 'keyword' ||
                 scanToken.type === 'and' || scanToken.type === 'in' ||
                 scanToken.type === 'end' || scanToken.type === 'equals' ||
-                scanToken.type === 'arrow') {
+                scanToken.type === 'arrow' || scanToken.type === 'if' ||
+                scanToken.type === 'then' || scanToken.type === 'else') {
                 return false;
             }
 
