@@ -606,6 +606,70 @@ class ScopeBuilder {
                     this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val', exprEndOffset));
                 }
             }
+
+            // Handle 'and' for mutually recursive val declarations
+            while (this.peek()?.type === 'and') {
+                this.advance(); // skip 'and'
+
+                const andBindings = this.parsePattern();
+
+                // Skip optional type annotation
+                if (this.peek()?.type === 'colon') {
+                    this.advance();
+                    while (this.index < this.tokens.length) {
+                        const next = this.peek();
+                        if (next?.type === 'equals' || next?.type === 'keyword' || next?.type === 'end') break;
+                        this.advance();
+                    }
+                }
+
+                const hasAndEquals = this.peek()?.type === 'equals';
+                if (hasAndEquals) {
+                    this.advance(); // skip '='
+                }
+
+                if (!hasAndEquals) {
+                    // Signature file: no RHS
+                    for (const binding of andBindings) {
+                        this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val'));
+                    }
+                } else {
+                    // Check if this is function-like (has parameters after the pattern)
+                    const nextTok = this.peek();
+                    const isFunctionLike = nextTok && (nextTok.type === 'ident' || nextTok.type === 'lparen' || nextTok.type === 'lbrace' || nextTok.type === 'lbracket');
+
+                    if (isFunctionLike) {
+                        // Function-like: and bar x y = body
+                        for (const binding of andBindings) {
+                            this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val'));
+                        }
+                        const result = this.parseFunctionParameters();
+                        if (result) {
+                            const { params, bodyStartOffset } = result;
+                            if (params.length > 0) {
+                                const bodyScope = this.createScope(scope, bodyStartOffset, scope.endOffset, 'function-body');
+                                for (const param of params) {
+                                    this.addDefinition(bodyScope, this.makeDefinition(param.name, param.offset, 'param'));
+                                }
+                                this.parseFunctionBody(bodyScope);
+                            }
+                        }
+                    } else if (isRecursiveVal) {
+                        // val rec: bindings visible in RHS
+                        for (const binding of andBindings) {
+                            this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val'));
+                        }
+                        this.parseValDeclaration(scope);
+                    } else {
+                        // Plain val: bindings visible after RHS
+                        const exprEndOffset = this.parseValDeclaration(scope);
+                        for (const binding of andBindings) {
+                            this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val', exprEndOffset));
+                        }
+                    }
+                }
+            }
+
             return;
         }
 
@@ -1076,6 +1140,7 @@ class ScopeBuilder {
      * - Wildcard: _
      * - Tuple: (p1, p2, ...)
      * - Record: {field1 = p1, field2 = p2, ...}
+     * - List: [p1, p2, ...] or []
      * - Constructor with argument: Con p
      */
     private parsePattern(): Array<{ name: string, offset: number }> {
@@ -1099,7 +1164,7 @@ class ScopeBuilder {
                     continue;
                 }
                 // Only parse pattern if we have something that starts a pattern
-                if (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace') {
+                if (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace' || next.type === 'lbracket') {
                     const beforeIndex = this.index;
                     bindings.push(...this.parsePattern());
                     // Safety: if parsePattern didn't advance, skip this token to avoid infinite loop
@@ -1157,6 +1222,37 @@ class ScopeBuilder {
             return bindings;
         }
 
+        // List pattern: [p1, p2, ...] or []
+        if (t.type === 'lbracket') {
+            this.advance(); // skip '['
+            while (this.index < this.tokens.length) {
+                const next = this.peek();
+                if (!next) break;
+                if (next.type === 'rbracket') {
+                    this.advance(); // skip ']'
+                    break;
+                }
+                // Skip comma if present
+                if (next.type === 'comma') {
+                    this.advance();
+                    continue;
+                }
+                // Only parse pattern if we have something that starts a pattern
+                if (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace' || next.type === 'lbracket') {
+                    const beforeIndex = this.index;
+                    bindings.push(...this.parsePattern());
+                    // Safety: if parsePattern didn't advance, skip this token to avoid infinite loop
+                    if (this.index === beforeIndex) {
+                        this.advance();
+                    }
+                } else {
+                    // Unknown token in list pattern - skip it to avoid infinite loop
+                    this.advance();
+                }
+            }
+            return bindings;
+        }
+
         // Identifier: could be variable binding or constructor
         if (t.type === 'ident') {
             const name = t.value;
@@ -1171,7 +1267,7 @@ class ScopeBuilder {
             if (this.isConstructor(name)) {
                 // Constructor - parse argument pattern if present
                 const next = this.peek();
-                if (next && (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace')) {
+                if (next && (next.type === 'ident' || next.type === 'lparen' || next.type === 'lbrace' || next.type === 'lbracket')) {
                     bindings.push(...this.parsePattern());
                 }
             } else {
@@ -1555,6 +1651,15 @@ class ScopeBuilder {
             // Parse the pattern
             const beforePattern = this.index;
             const patternBindings = this.parsePattern();
+
+            // Handle :: cons patterns (e.g., x :: xs, (a, b) :: rest :: tail)
+            while (this.index + 1 < this.tokens.length &&
+                   this.peek()?.type === 'colon' &&
+                   this.tokens[this.index + 1]?.type === 'colon') {
+                this.advance(); // skip first ':'
+                this.advance(); // skip second ':'
+                patternBindings.push(...this.parsePattern());
+            }
 
             // Expect =>
             if (this.peek()?.type === 'arrow') {
