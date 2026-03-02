@@ -267,70 +267,64 @@ function tokenizeUrWebInBraces(state: TokenizerState): void {
         }
 
         // Structural characters
-        if (text[i] === '(') {
-            state.tokens.push({ type: 'lparen', value: '(', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ')') {
-            state.tokens.push({ type: 'rparen', value: ')', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '[') {
-            state.tokens.push({ type: 'lbracket', value: '[', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ']') {
-            state.tokens.push({ type: 'rbracket', value: ']', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ':') {
-            state.tokens.push({ type: 'colon', value: ':', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '=' && text[i + 1] === '>') {
-            state.tokens.push({ type: 'arrow', value: '=>', offset: i, line: state.line });
-            state.index += 2;
-            continue;
-        }
-        if (text[i] === '=') {
-            state.tokens.push({ type: 'equals', value: '=', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '.') {
-            state.tokens.push({ type: 'dot', value: '.', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '<' && text[i + 1] === '-') {
-            state.tokens.push({ type: 'larrow', value: '<-', offset: i, line: state.line });
-            state.index += 2;
-            continue;
-        }
-        if (text[i] === ';') {
-            state.tokens.push({ type: 'semicolon', value: ';', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ',') {
-            state.tokens.push({ type: 'comma', value: ',', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '|') {
-            state.tokens.push({ type: 'pipe', value: '|', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
+        if (emitStructuralTokens(state)) continue;
 
         // Skip other characters
         state.index++;
     }
+}
+
+/**
+ * Lookup table for single-character tokens shared between tokenize() and tokenizeUrWebInBraces().
+ */
+const SINGLE_CHAR_TOKENS: Map<string, Token['type']> = new Map([
+    ['(', 'lparen'],
+    [')', 'rparen'],
+    ['[', 'lbracket'],
+    [']', 'rbracket'],
+    [':', 'colon'],
+    ['.', 'dot'],
+    [';', 'semicolon'],
+    [',', 'comma'],
+    ['|', 'pipe'],
+]);
+
+/**
+ * Emit structural tokens (single-char from lookup table, plus two-char => and <-, plus =).
+ * Returns true if a token was emitted.
+ */
+function emitStructuralTokens(state: TokenizerState): boolean {
+    const text = state.text;
+    const i = state.index;
+
+    // Two-character tokens first
+    if (text[i] === '=' && text[i + 1] === '>') {
+        state.tokens.push({ type: 'arrow', value: '=>', offset: i, line: state.line });
+        state.index += 2;
+        return true;
+    }
+    if (text[i] === '<' && text[i + 1] === '-') {
+        state.tokens.push({ type: 'larrow', value: '<-', offset: i, line: state.line });
+        state.index += 2;
+        return true;
+    }
+
+    // Single-character '=' (after checking for '=>')
+    if (text[i] === '=') {
+        state.tokens.push({ type: 'equals', value: '=', offset: i, line: state.line });
+        state.index++;
+        return true;
+    }
+
+    // Single-character tokens from lookup table
+    const tokenType = SINGLE_CHAR_TOKENS.get(text[i]);
+    if (tokenType) {
+        state.tokens.push({ type: tokenType, value: text[i], offset: i, line: state.line });
+        state.index++;
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -387,56 +381,9 @@ function tokenize(text: string): Token[] {
         }
 
         // Structural characters
-        if (text[i] === '(') {
-            state.tokens.push({ type: 'lparen', value: '(', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ')') {
-            state.tokens.push({ type: 'rparen', value: ')', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '[') {
-            state.tokens.push({ type: 'lbracket', value: '[', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ']') {
-            state.tokens.push({ type: 'rbracket', value: ']', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ':') {
-            state.tokens.push({ type: 'colon', value: ':', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '=' && text[i + 1] === '>') {
-            state.tokens.push({ type: 'arrow', value: '=>', offset: i, line: state.line });
-            state.index += 2;
-            continue;
-        }
-        if (text[i] === '=') {
-            state.tokens.push({ type: 'equals', value: '=', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '.') {
-            state.tokens.push({ type: 'dot', value: '.', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '<' && text[i + 1] === '-') {
-            state.tokens.push({ type: 'larrow', value: '<-', offset: i, line: state.line });
-            state.index += 2;
-            continue;
-        }
-        if (text[i] === ';') {
-            state.tokens.push({ type: 'semicolon', value: ';', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
+        if (emitStructuralTokens(state)) continue;
+
+        // Braces (handled separately since tokenizeUrWebInBraces tracks brace depth)
         if (text[i] === '{') {
             state.tokens.push({ type: 'lbrace', value: '{', offset: i, line: state.line });
             state.index++;
@@ -444,16 +391,6 @@ function tokenize(text: string): Token[] {
         }
         if (text[i] === '}') {
             state.tokens.push({ type: 'rbrace', value: '}', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === ',') {
-            state.tokens.push({ type: 'comma', value: ',', offset: i, line: state.line });
-            state.index++;
-            continue;
-        }
-        if (text[i] === '|') {
-            state.tokens.push({ type: 'pipe', value: '|', offset: i, line: state.line });
             state.index++;
             continue;
         }
@@ -506,6 +443,19 @@ class ScopeBuilder {
         } else {
             scope.definitions.set(def.name, [def]);
         }
+    }
+
+    private makeDefinition(name: string, nameOffset: number, kind: DefinitionKind, visibilityOffset?: number): Definition {
+        const start = this.document.positionAt(nameOffset);
+        const end = this.document.positionAt(nameOffset + name.length);
+        const range = new vscode.Range(start, end);
+        return {
+            name,
+            kind,
+            range,
+            selectionRange: range,
+            offset: visibilityOffset ?? nameOffset,
+        };
     }
 
     private peek(offset: number = 0): Token | undefined {
@@ -573,19 +523,7 @@ class ScopeBuilder {
                     this.advance();
                     // We'll resolve the module reference later during resolution
                     // For now, store a placeholder
-                    const placeholder: Definition = {
-                        name: moduleName,
-                        kind: 'structure',
-                        range: new vscode.Range(
-                            this.document.positionAt(moduleNameToken.offset),
-                            this.document.positionAt(moduleNameToken.offset + moduleName.length)
-                        ),
-                        selectionRange: new vscode.Range(
-                            this.document.positionAt(moduleNameToken.offset),
-                            this.document.positionAt(moduleNameToken.offset + moduleName.length)
-                        ),
-                        offset: moduleNameToken.offset,
-                    };
+                    const placeholder = this.makeDefinition(moduleName, moduleNameToken.offset, 'structure');
                     scope.opens.push({
                         moduleRef: placeholder,
                         offset: openOffset
@@ -653,58 +591,19 @@ class ScopeBuilder {
             if (!hasEquals) {
                 // Signature file: no RHS to parse, just add the bindings
                 for (const binding of patternBindings) {
-                    const def: Definition = {
-                        name: binding.name,
-                        kind: 'val',
-                        range: new vscode.Range(
-                            this.document.positionAt(binding.offset),
-                            this.document.positionAt(binding.offset + binding.name.length)
-                        ),
-                        selectionRange: new vscode.Range(
-                            this.document.positionAt(binding.offset),
-                            this.document.positionAt(binding.offset + binding.name.length)
-                        ),
-                        offset: binding.offset,
-                    };
-                    this.addDefinition(scope, def);
+                    this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val'));
                 }
             } else if (isRecursiveVal) {
                 // val rec - bindings ARE visible in RHS (for recursion)
                 for (const binding of patternBindings) {
-                    const def: Definition = {
-                        name: binding.name,
-                        kind: 'val',
-                        range: new vscode.Range(
-                            this.document.positionAt(binding.offset),
-                            this.document.positionAt(binding.offset + binding.name.length)
-                        ),
-                        selectionRange: new vscode.Range(
-                            this.document.positionAt(binding.offset),
-                            this.document.positionAt(binding.offset + binding.name.length)
-                        ),
-                        offset: binding.offset,
-                    };
-                    this.addDefinition(scope, def);
+                    this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val'));
                 }
                 this.parseValDeclaration(scope);
             } else {
                 // Plain val - bindings NOT visible in RHS
                 const exprEndOffset = this.parseValDeclaration(scope);
                 for (const binding of patternBindings) {
-                    const def: Definition = {
-                        name: binding.name,
-                        kind: 'val',
-                        range: new vscode.Range(
-                            this.document.positionAt(binding.offset),
-                            this.document.positionAt(binding.offset + binding.name.length)
-                        ),
-                        selectionRange: new vscode.Range(
-                            this.document.positionAt(binding.offset),
-                            this.document.positionAt(binding.offset + binding.name.length)
-                        ),
-                        offset: exprEndOffset,
-                    };
-                    this.addDefinition(scope, def);
+                    this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val', exprEndOffset));
                 }
             }
             return;
@@ -745,20 +644,7 @@ class ScopeBuilder {
                 const andNameToken = this.peek();
                 if (andNameToken?.type === 'ident') {
                     this.advance();
-                    const andDef: Definition = {
-                        name: andNameToken.value,
-                        kind,
-                        range: new vscode.Range(
-                            this.document.positionAt(andNameToken.offset),
-                            this.document.positionAt(andNameToken.offset + andNameToken.value.length)
-                        ),
-                        selectionRange: new vscode.Range(
-                            this.document.positionAt(andNameToken.offset),
-                            this.document.positionAt(andNameToken.offset + andNameToken.value.length)
-                        ),
-                        offset: andNameToken.offset,
-                    };
-                    this.addDefinition(scope, andDef);
+                    this.addDefinition(scope, this.makeDefinition(andNameToken.value, andNameToken.offset, kind));
                     this.parseDatatypeConstructors(scope);
                 }
             }
@@ -770,20 +656,7 @@ class ScopeBuilder {
                 const andNameToken = this.peek();
                 if (andNameToken?.type === 'ident') {
                     this.advance();
-                    const andDef: Definition = {
-                        name: andNameToken.value,
-                        kind,
-                        range: new vscode.Range(
-                            this.document.positionAt(andNameToken.offset),
-                            this.document.positionAt(andNameToken.offset + andNameToken.value.length)
-                        ),
-                        selectionRange: new vscode.Range(
-                            this.document.positionAt(andNameToken.offset),
-                            this.document.positionAt(andNameToken.offset + andNameToken.value.length)
-                        ),
-                        offset: andNameToken.offset,
-                    };
-                    this.addDefinition(scope, andDef);
+                    this.addDefinition(scope, this.makeDefinition(andNameToken.value, andNameToken.offset, kind));
                 }
             }
         }
@@ -819,20 +692,7 @@ class ScopeBuilder {
 
             // Constructor name (uppercase identifier)
             if (t.type === 'ident' && this.isConstructor(t.value)) {
-                const conDef: Definition = {
-                    name: t.value,
-                    kind: 'constructor',
-                    range: new vscode.Range(
-                        this.document.positionAt(t.offset),
-                        this.document.positionAt(t.offset + t.value.length)
-                    ),
-                    selectionRange: new vscode.Range(
-                        this.document.positionAt(t.offset),
-                        this.document.positionAt(t.offset + t.value.length)
-                    ),
-                    offset: t.offset,
-                };
-                this.addDefinition(scope, conDef);
+                this.addDefinition(scope, this.makeDefinition(t.value, t.offset, 'constructor'));
                 this.advance();
 
                 // Check for 'of' followed by type
@@ -934,20 +794,7 @@ class ScopeBuilder {
 
             // Add parameters to function body scope
             for (const param of params) {
-                const paramDef: Definition = {
-                    name: param.name,
-                    kind: 'param',
-                    range: new vscode.Range(
-                        this.document.positionAt(param.offset),
-                        this.document.positionAt(param.offset + param.name.length)
-                    ),
-                    selectionRange: new vscode.Range(
-                        this.document.positionAt(param.offset),
-                        this.document.positionAt(param.offset + param.name.length)
-                    ),
-                    offset: param.offset,
-                };
-                this.addDefinition(bodyScope, paramDef);
+                this.addDefinition(bodyScope, this.makeDefinition(param.name, param.offset, 'param'));
             }
 
             // Parse the function body
@@ -960,20 +807,7 @@ class ScopeBuilder {
             const andNameToken = this.peek();
             if (andNameToken?.type === 'ident') {
                 this.advance();
-                const andDef: Definition = {
-                    name: andNameToken.value,
-                    kind,
-                    range: new vscode.Range(
-                        this.document.positionAt(andNameToken.offset),
-                        this.document.positionAt(andNameToken.offset + andNameToken.value.length)
-                    ),
-                    selectionRange: new vscode.Range(
-                        this.document.positionAt(andNameToken.offset),
-                        this.document.positionAt(andNameToken.offset + andNameToken.value.length)
-                    ),
-                    offset: andNameToken.offset,
-                };
-                this.addDefinition(scope, andDef);
+                this.addDefinition(scope, this.makeDefinition(andNameToken.value, andNameToken.offset, kind));
 
                 // Parse parameters for this 'and' function too
                 this.parseFunDeclaration(scope, kind);
@@ -1048,11 +882,7 @@ class ScopeBuilder {
 
             // Handle let blocks
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance();
-                const letScope = this.createScope(scope, letStart, scope.endOffset, 'let');
-                this.parseLetBody(letScope);
-                letScope.endOffset = this.peek()?.offset ?? scope.endOffset;
+                this.parseNestedLet(scope);
                 continue;
             }
 
@@ -1136,20 +966,8 @@ class ScopeBuilder {
                         const paramScope = this.createScope(scope, sigToken.offset, scope.endOffset, 'functor-param', paramNameToken.value);
 
                         // Create definition for the functor parameter
-                        const paramDef: Definition = {
-                            name: paramNameToken.value,
-                            kind: 'functor-param',
-                            range: new vscode.Range(
-                                this.document.positionAt(paramNameToken.offset),
-                                this.document.positionAt(paramNameToken.offset + paramNameToken.value.length)
-                            ),
-                            selectionRange: new vscode.Range(
-                                this.document.positionAt(paramNameToken.offset),
-                                this.document.positionAt(paramNameToken.offset + paramNameToken.value.length)
-                            ),
-                            offset: paramNameToken.offset,
-                            moduleScope: paramScope
-                        };
+                        const paramDef = this.makeDefinition(paramNameToken.value, paramNameToken.offset, 'functor-param');
+                        paramDef.moduleScope = paramScope;
 
                         // Parse the signature content into the param scope
                         this.parseScope(paramScope, 0);
@@ -1217,6 +1035,31 @@ class ScopeBuilder {
             else if (t?.type === 'rbracket') depth--;
             this.advance();
         }
+    }
+
+    /**
+     * Check if the current '(' starts a typed parameter (pattern : type) vs a tuple (pattern, pattern).
+     * Scans ahead without modifying this.index.
+     */
+    private hasTypedParameterInParens(): boolean {
+        let parenDepth = 0;
+        let scanIndex = this.index + 1; // start past the '('
+        while (scanIndex < this.tokens.length) {
+            const scanToken = this.tokens[scanIndex];
+            if (scanToken.type === 'lparen') parenDepth++;
+            else if (scanToken.type === 'rparen') {
+                if (parenDepth === 0) break;
+                parenDepth--;
+            }
+            else if (scanToken.type === 'colon' && parenDepth === 0) {
+                return true;
+            }
+            else if (scanToken.type === 'comma' && parenDepth === 0) {
+                break;
+            }
+            scanIndex++;
+        }
+        return false;
     }
 
     /**
@@ -1388,45 +1231,11 @@ class ScopeBuilder {
 
             // Parenthesized: could be typed parameter (x : type) or tuple pattern (a, b)
             if (t.type === 'lparen') {
-                // Look ahead to determine if it's a typed parameter or a pattern
-                // Typed parameter has form: (ident : ...) or (pattern : ...)
-                const savedIndex = this.index;
-                this.advance(); // skip '('
-
-                // Try to detect if this is (pattern : type) vs (pattern, pattern, ...)
-                // by looking for a colon that's not inside nested parens
-                let parenDepth = 0;
-                let hasColonAtTopLevel = false;
-                let scanIndex = this.index;
-                while (scanIndex < this.tokens.length) {
-                    const scanToken = this.tokens[scanIndex];
-                    if (scanToken.type === 'lparen') parenDepth++;
-                    else if (scanToken.type === 'rparen') {
-                        if (parenDepth === 0) break;
-                        parenDepth--;
-                    }
-                    else if (scanToken.type === 'colon' && parenDepth === 0) {
-                        hasColonAtTopLevel = true;
-                        break;
-                    }
-                    else if (scanToken.type === 'comma' && parenDepth === 0) {
-                        // It's a tuple pattern
-                        break;
-                    }
-                    scanIndex++;
-                }
-
-                // Restore position and parse appropriately
-                this.index = savedIndex;
-
-                if (hasColonAtTopLevel) {
-                    // Typed parameter: (pattern : type)
+                if (this.hasTypedParameterInParens()) {
                     this.advance(); // skip '('
                     params.push(...this.parsePattern());
-                    // Skip to closing ')' (past the type annotation)
                     this.skipToMatchingParen();
                 } else {
-                    // Tuple pattern or just parenthesized pattern
                     params.push(...this.parsePattern());
                 }
                 continue;
@@ -1506,11 +1315,7 @@ class ScopeBuilder {
 
             // Handle let blocks - create a proper scope and parse contents
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance(); // skip 'let'
-                const letScope = this.createScope(bodyScope, letStart, bodyScope.endOffset, 'let');
-                this.parseLetBody(letScope);
-                letScope.endOffset = this.peek()?.offset ?? bodyScope.endOffset;
+                this.parseNestedLet(bodyScope);
                 continue;
             }
 
@@ -1548,34 +1353,8 @@ class ScopeBuilder {
             }
 
             // Handle monadic binding: pattern <- expr ;
-            // The binding is only visible after the semicolon
             if (this.isMonadicBinding()) {
-                const bindings = this.parsePattern();
-                if (this.peek()?.type === 'larrow') {
-                    this.advance(); // skip <-
-                }
-
-                // Parse the expression until ';', handling nested constructs
-                const semicolonOffset = this.skipToSemicolonWithBindings(bodyScope);
-                if (semicolonOffset !== null) {
-                    // Add bindings with offset after the semicolon
-                    for (const binding of bindings) {
-                        const bindingDef: Definition = {
-                            name: binding.name,
-                            kind: 'val',
-                            range: new vscode.Range(
-                                this.document.positionAt(binding.offset),
-                                this.document.positionAt(binding.offset + binding.name.length)
-                            ),
-                            selectionRange: new vscode.Range(
-                                this.document.positionAt(binding.offset),
-                                this.document.positionAt(binding.offset + binding.name.length)
-                            ),
-                            offset: semicolonOffset + 1,
-                        };
-                        this.addDefinition(bodyScope, bindingDef);
-                    }
-                }
+                this.handleMonadicBinding(bodyScope);
                 continue;
             }
 
@@ -1641,6 +1420,23 @@ class ScopeBuilder {
         }
 
         return false;
+    }
+
+    /**
+     * Handle a monadic binding: pattern <- expr ;
+     * Parses the pattern, skips to semicolon, and adds bindings visible after the semicolon.
+     */
+    private handleMonadicBinding(scope: Scope): void {
+        const bindings = this.parsePattern();
+        if (this.peek()?.type === 'larrow') {
+            this.advance(); // skip <-
+        }
+        const semicolonOffset = this.skipToSemicolonWithBindings(scope);
+        if (semicolonOffset !== null) {
+            for (const binding of bindings) {
+                this.addDefinition(scope, this.makeDefinition(binding.name, binding.offset, 'val', semicolonOffset + 1));
+            }
+        }
     }
 
     /**
@@ -1722,11 +1518,7 @@ class ScopeBuilder {
                 continue;
             }
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance();
-                const letScope = this.createScope(parentScope, letStart, parentScope.endOffset, 'let');
-                this.parseLetBody(letScope);
-                letScope.endOffset = this.peek()?.offset ?? parentScope.endOffset;
+                this.parseNestedLet(parentScope);
                 continue;
             }
 
@@ -1779,20 +1571,7 @@ class ScopeBuilder {
 
             // Add pattern bindings to the branch scope
             for (const binding of patternBindings) {
-                const bindingDef: Definition = {
-                    name: binding.name,
-                    kind: 'param',
-                    range: new vscode.Range(
-                        this.document.positionAt(binding.offset),
-                        this.document.positionAt(binding.offset + binding.name.length)
-                    ),
-                    selectionRange: new vscode.Range(
-                        this.document.positionAt(binding.offset),
-                        this.document.positionAt(binding.offset + binding.name.length)
-                    ),
-                    offset: binding.offset,
-                };
-                this.addDefinition(branchScope, bindingDef);
+                this.addDefinition(branchScope, this.makeDefinition(binding.name, binding.offset, 'param'));
             }
 
             // Parse the branch expression
@@ -1865,11 +1644,7 @@ class ScopeBuilder {
 
             // Handle nested constructs
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance();
-                const letScope = this.createScope(branchScope, letStart, branchScope.endOffset, 'let');
-                this.parseLetBody(letScope);
-                letScope.endOffset = this.peek()?.offset ?? branchScope.endOffset;
+                this.parseNestedLet(branchScope);
                 continue;
             }
 
@@ -1952,11 +1727,7 @@ class ScopeBuilder {
 
             // Handle nested constructs that introduce bindings
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance();
-                const letScope = this.createScope(parentScope, letStart, parentScope.endOffset, 'let');
-                this.parseLetBody(letScope);
-                letScope.endOffset = this.peek()?.offset ?? parentScope.endOffset;
+                this.parseNestedLet(parentScope);
                 continue;
             }
             if (t.type === 'fn') {
@@ -1987,6 +1758,18 @@ class ScopeBuilder {
     }
 
     /**
+     * Parse a nested let block: creates a let scope, parses it, and sets the end offset.
+     * Expects this.peek() to be at the 'let' token.
+     */
+    private parseNestedLet(parentScope: Scope): void {
+        const letStart = this.peek()!.offset;
+        this.advance();
+        const letScope = this.createScope(parentScope, letStart, parentScope.endOffset, 'let');
+        this.parseLetBody(letScope);
+        letScope.endOffset = this.peek()?.offset ?? parentScope.endOffset;
+    }
+
+    /**
      * Parse the body of a let block, handling declarations and the in...end portion.
      */
     private parseLetBody(letScope: Scope): void {
@@ -2007,11 +1790,7 @@ class ScopeBuilder {
 
             // Handle nested let
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance();
-                const innerLetScope = this.createScope(letScope, letStart, letScope.endOffset, 'let');
-                this.parseLetBody(innerLetScope);
-                innerLetScope.endOffset = this.peek()?.offset ?? letScope.endOffset;
+                this.parseNestedLet(letScope);
                 continue;
             }
 
@@ -2025,11 +1804,7 @@ class ScopeBuilder {
             if (!t) break;
 
             if (t.type === 'let') {
-                const letStart = t.offset;
-                this.advance();
-                const innerLetScope = this.createScope(letScope, letStart, letScope.endOffset, 'let');
-                this.parseLetBody(innerLetScope);
-                innerLetScope.endOffset = this.peek()?.offset ?? letScope.endOffset;
+                this.parseNestedLet(letScope);
                 continue;
             }
 
@@ -2063,30 +1838,7 @@ class ScopeBuilder {
 
             // Handle monadic binding: pattern <- expr ;
             if (this.isMonadicBinding()) {
-                const bindings = this.parsePattern();
-                if (this.peek()?.type === 'larrow') {
-                    this.advance(); // skip <-
-                }
-
-                const semicolonOffset = this.skipToSemicolonWithBindings(letScope);
-                if (semicolonOffset !== null) {
-                    for (const binding of bindings) {
-                        const bindingDef: Definition = {
-                            name: binding.name,
-                            kind: 'val',
-                            range: new vscode.Range(
-                                this.document.positionAt(binding.offset),
-                                this.document.positionAt(binding.offset + binding.name.length)
-                            ),
-                            selectionRange: new vscode.Range(
-                                this.document.positionAt(binding.offset),
-                                this.document.positionAt(binding.offset + binding.name.length)
-                            ),
-                            offset: semicolonOffset + 1,
-                        };
-                        this.addDefinition(letScope, bindingDef);
-                    }
-                }
+                this.handleMonadicBinding(letScope);
                 continue;
             }
 
@@ -2138,33 +1890,7 @@ class ScopeBuilder {
 
             // Parenthesized pattern or typed parameter
             if (t.type === 'lparen') {
-                // Check if it's (pattern : type) or just a pattern
-                const savedIndex = this.index;
-                this.advance();
-
-                let parenDepth = 0;
-                let hasColonAtTopLevel = false;
-                let scanIndex = this.index;
-                while (scanIndex < this.tokens.length) {
-                    const scanToken = this.tokens[scanIndex];
-                    if (scanToken.type === 'lparen') parenDepth++;
-                    else if (scanToken.type === 'rparen') {
-                        if (parenDepth === 0) break;
-                        parenDepth--;
-                    }
-                    else if (scanToken.type === 'colon' && parenDepth === 0) {
-                        hasColonAtTopLevel = true;
-                        break;
-                    }
-                    else if (scanToken.type === 'comma' && parenDepth === 0) {
-                        break;
-                    }
-                    scanIndex++;
-                }
-
-                this.index = savedIndex;
-
-                if (hasColonAtTopLevel) {
+                if (this.hasTypedParameterInParens()) {
                     this.advance(); // skip '('
                     params.push(...this.parsePattern());
                     this.skipToMatchingParen();
@@ -2191,20 +1917,7 @@ class ScopeBuilder {
 
         // Add parameters to the lambda scope
         for (const param of params) {
-            const paramDef: Definition = {
-                name: param.name,
-                kind: 'param',
-                range: new vscode.Range(
-                    this.document.positionAt(param.offset),
-                    this.document.positionAt(param.offset + param.name.length)
-                ),
-                selectionRange: new vscode.Range(
-                    this.document.positionAt(param.offset),
-                    this.document.positionAt(param.offset + param.name.length)
-                ),
-                offset: param.offset,
-            };
-            this.addDefinition(lambdaScope, paramDef);
+            this.addDefinition(lambdaScope, this.makeDefinition(param.name, param.offset, 'param'));
         }
 
         // Parse the lambda body
