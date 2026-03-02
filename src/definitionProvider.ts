@@ -2637,6 +2637,75 @@ function getQualifiedNameAtPosition(document: vscode.TextDocument, position: vsc
 }
 
 /**
+ * Get the companion file URI (.ur <-> .urs).
+ */
+function getCompanionUri(uri: vscode.Uri): vscode.Uri | null {
+    const path = uri.fsPath;
+    if (path.endsWith('.urs')) {
+        return uri.with({ path: path.slice(0, -1) }); // .urs -> .ur
+    } else if (path.endsWith('.ur')) {
+        return uri.with({ path: path + 's' }); // .ur -> .urs
+    }
+    return null;
+}
+
+/**
+ * Find which scope directly contains a given definition (by identity).
+ */
+function findScopeContaining(scope: Scope, target: Definition): Scope | null {
+    for (const [, defs] of scope.definitions) {
+        for (const def of defs) {
+            if (def === target) return scope;
+        }
+    }
+    for (const child of scope.children) {
+        const found = findScopeContaining(child, target);
+        if (found) return found;
+    }
+    return null;
+}
+
+/**
+ * Compute the structural nesting path from the file root to a definition.
+ * Only includes structure/signature/functor scope names, plus the definition name.
+ */
+function getScopePath(rootScope: Scope, def: Definition): string[] {
+    const containingScope = findScopeContaining(rootScope, def);
+    if (!containingScope) return [def.name];
+
+    const path: string[] = [];
+    let scope: Scope | null = containingScope;
+    while (scope && scope.kind !== 'file') {
+        if ((scope.kind === 'structure' || scope.kind === 'signature' || scope.kind === 'functor') && scope.name) {
+            path.unshift(scope.name);
+        }
+        scope = scope.parent;
+    }
+    path.push(def.name);
+    return path;
+}
+
+/**
+ * Given a path like ["Bar", "baz"] and a root scope, navigate through
+ * moduleScope of intermediate structure definitions to find the target definition.
+ */
+function resolvePathInScope(path: string[], scope: Scope): Definition | null {
+    if (path.length === 0) return null;
+
+    if (path.length === 1) {
+        const defs = scope.definitions.get(path[0]);
+        if (defs && defs.length > 0) return defs[defs.length - 1];
+        return null;
+    }
+
+    const defs = scope.definitions.get(path[0]);
+    if (!defs || defs.length === 0) return null;
+    const moduleDef = defs[defs.length - 1];
+    if (!moduleDef.moduleScope) return null;
+    return resolvePathInScope(path.slice(1), moduleDef.moduleScope);
+}
+
+/**
  * VS Code Definition Provider for Ur/Web.
  */
 export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
@@ -2648,6 +2717,32 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
 
     async initialize(): Promise<void> {
         await this.fileManager.initialize();
+    }
+
+    private async findCompanionDefinition(
+        document: vscode.TextDocument,
+        defAtCursor: Definition,
+        rootScope: Scope
+    ): Promise<vscode.Location | null> {
+        const companionUri = getCompanionUri(document.uri);
+        if (!companionUri) return null;
+
+        try {
+            await vscode.workspace.fs.stat(companionUri);
+        } catch {
+            return null;
+        }
+
+        const companionDoc = await vscode.workspace.openTextDocument(companionUri);
+        const companionTokens = tokenize(companionDoc.getText());
+        const companionBuilder = new ScopeBuilder(companionDoc, companionTokens);
+        const companionRootScope = companionBuilder.build();
+
+        const path = getScopePath(rootScope, defAtCursor);
+        const companionDef = resolvePathInScope(path, companionRootScope);
+        if (!companionDef) return null;
+
+        return new vscode.Location(companionUri, companionDef.selectionRange);
     }
 
     public async provideDefinition(
@@ -2675,8 +2770,7 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
             if (qualifiedName.parts.length === 1) {
                 const defAtCursor = resolver.findDefinitionAt(qualifiedName.parts[0], cursorOffset);
                 if (defAtCursor) {
-                    // We're on a definition site - return null (already at definition)
-                    return null;
+                    return await this.findCompanionDefinition(document, defAtCursor, rootScope);
                 }
             }
 
