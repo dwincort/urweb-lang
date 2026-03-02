@@ -2,7 +2,7 @@
   "name": "urweb-lang",
   "displayName": "urweb-language",
   "description": "Syntax highlighting and code navigation for Ur/Web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "publisher": "DanWC",
   "engines": {
