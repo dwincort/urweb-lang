@@ -37,3 +37,12 @@ Install the `.vsix` into VS Code:
 ```bash
 code --install-extension urweb-lang-0.1.0.vsix
 ```
+
+## Uploading
+```bash
+vsce publish -p <Personal Access Token>
+```
+and
+```bash
+ovsx publish -p <Personal Access Token>
+```

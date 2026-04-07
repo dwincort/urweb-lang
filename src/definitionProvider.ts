@@ -2034,6 +2034,7 @@ class ScopeBuilder {
  * Manages discovery and caching of external .urs files.
  */
 class FileManager {
+    private static readonly EXCLUDE_PATTERN = '**/{.zig-cache,zig-out,.cache,node_modules,dist,build,out}/**';
     private fileCache = new Map<string, { scope: Scope, uri: vscode.Uri } | null>();
     private basisScope: Scope | null = null;
     private topScope: Scope | null = null;
@@ -2046,8 +2047,8 @@ class FileManager {
     }
 
     private async findAndParseBasisFiles(): Promise<void> {
-        const basisFiles = await vscode.workspace.findFiles('**/basis.urs', null, 1);
-        const topFiles = await vscode.workspace.findFiles('**/top.urs', null, 1);
+        const basisFiles = await vscode.workspace.findFiles('**/basis.urs', FileManager.EXCLUDE_PATTERN, 1);
+        const topFiles = await vscode.workspace.findFiles('**/top.urs', FileManager.EXCLUDE_PATTERN, 1);
 
         if (basisFiles.length > 0) {
             this.basisUri = basisFiles[0];
@@ -2091,7 +2092,7 @@ class FileManager {
         let uri: vscode.Uri | null = null;
 
         // First, search in the workspace
-        const files = await vscode.workspace.findFiles(`**/${filename}`, null, 1);
+        const files = await vscode.workspace.findFiles(`**/${filename}`, FileManager.EXCLUDE_PATTERN, 1);
         if (files.length > 0) {
             uri = files[0];
         }
