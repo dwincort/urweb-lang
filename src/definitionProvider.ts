@@ -2369,20 +2369,40 @@ class DefinitionResolver {
             }
         }
 
-        // 3. If not found locally, look for external .urs file
+        // 3. If not found locally as a module, look for external .urs file
         if (!localModuleDef || !localModuleDef.moduleScope) {
             const external = await this.fileManager.getModuleScope(moduleName);
             if (external && parts.length > 1) {
                 const result = this.resolveInScope(parts.slice(1), external.scope);
                 if (result) return { definition: result, uri: external.uri };
             }
-            // If parts.length === 1, we're looking for the module itself
-            // (e.g., just "Foo" not "Foo.bar")
             if (external && parts.length === 1) {
-                // Return a synthetic definition for the module itself
-                // This case is rare - usually we're looking for members
                 return null;
             }
+
+            // 4. Check if the module is defined in Top or Basis (e.g., List)
+            if (parts.length > 1) {
+                const topScope = this.fileManager.getTopScope();
+                const topUri = this.fileManager.getTopUri();
+                if (topScope && topUri) {
+                    const moduleDef = this.searchInModuleScope(moduleName, topScope);
+                    if (moduleDef?.moduleScope) {
+                        const result = this.resolveInScope(parts.slice(1), moduleDef.moduleScope);
+                        if (result) return { definition: result, uri: topUri };
+                    }
+                }
+
+                const basisScope = this.fileManager.getBasisScope();
+                const basisUri = this.fileManager.getBasisUri();
+                if (basisScope && basisUri) {
+                    const moduleDef = this.searchInModuleScope(moduleName, basisScope);
+                    if (moduleDef?.moduleScope) {
+                        const result = this.resolveInScope(parts.slice(1), moduleDef.moduleScope);
+                        if (result) return { definition: result, uri: basisUri };
+                    }
+                }
+            }
+
             return null;
         }
 
@@ -2428,10 +2448,30 @@ function getQualifiedNameAtPosition(document: vscode.TextDocument, position: vsc
         start--;
     }
 
+    // Only include dots (qualified names) when the first character is uppercase (module reference)
+    const startsWithUpper = start < line.length && /[A-Z]/.test(line[start]);
+
     // Find the end of the identifier/qualified name
     let end = offset;
-    while (end < line.length && /[a-zA-Z0-9_']/.test(line[end])) {
+    const forwardPattern = startsWithUpper ? /[a-zA-Z0-9_'.]/ : /[a-zA-Z0-9_']/;
+    while (end < line.length && forwardPattern.test(line[end])) {
         end++;
+    }
+
+    if (start === end) return null;
+
+    // If not a module reference, trim any dots and everything after from the backward scan
+    if (!startsWithUpper) {
+        const dotIdx = line.substring(start, end).indexOf('.');
+        if (dotIdx >= 0) {
+            // Cursor might be before or after the dot; keep only the part containing the cursor
+            const absDot = start + dotIdx;
+            if (offset <= absDot) {
+                end = absDot;
+            } else {
+                start = absDot + 1;
+            }
+        }
     }
 
     if (start === end) return null;
