@@ -2199,9 +2199,41 @@ class DefinitionResolver {
     }
 
     /**
+     * Resolve a style reference. Styles live in their own namespace — non-style
+     * bindings with the same name must not shadow a style in an outer scope —
+     * so we filter by kind at every lookup site rather than post-filtering a
+     * plain name resolution.
+     */
+    public async resolveStyleName(name: string, scope: Scope, usageOffset: number): Promise<ResolvedDefinition | null> {
+        const filter = (d: Definition) => d.kind === 'style';
+
+        const local = this.resolveInLocalScopes(name, scope, usageOffset, filter);
+        if (local) return { definition: local, uri: this.document.uri };
+
+        const opened = await this.resolveInOpenedModules(name, scope, usageOffset, filter);
+        if (opened) return opened;
+
+        const topScope = this.fileManager.getTopScope();
+        const topUri = this.fileManager.getTopUri();
+        if (topScope && topUri) {
+            const r = this.searchInModuleScope(name, topScope, filter);
+            if (r) return { definition: r, uri: topUri };
+        }
+
+        const basisScope = this.fileManager.getBasisScope();
+        const basisUri = this.fileManager.getBasisUri();
+        if (basisScope && basisUri) {
+            const r = this.searchInModuleScope(name, basisScope, filter);
+            if (r) return { definition: r, uri: basisUri };
+        }
+
+        return null;
+    }
+
+    /**
      * Resolve a name in local scopes only (no external files).
      */
-    private resolveInLocalScopes(name: string, scope: Scope, usageOffset: number): Definition | null {
+    private resolveInLocalScopes(name: string, scope: Scope, usageOffset: number, filter?: (d: Definition) => boolean): Definition | null {
         let currentScope: Scope | null = scope;
 
         while (currentScope) {
@@ -2210,7 +2242,7 @@ class DefinitionResolver {
             if (defs) {
                 // Find the latest definition before usageOffset
                 for (let i = defs.length - 1; i >= 0; i--) {
-                    if (defs[i].offset < usageOffset) {
+                    if (defs[i].offset < usageOffset && (!filter || filter(defs[i]))) {
                         return defs[i];
                     }
                 }
@@ -2220,10 +2252,10 @@ class DefinitionResolver {
             for (let i = currentScope.opens.length - 1; i >= 0; i--) {
                 const opened = currentScope.opens[i];
                 if (opened.offset < usageOffset) {
-                    // Try to resolve the module reference locally
+                    // Try to resolve the module reference locally (no filter: module refs are structures)
                     const moduleRef = this.resolveInLocalScopes(opened.moduleRef.name, currentScope, opened.offset);
                     if (moduleRef?.moduleScope) {
-                        const result = this.searchInModuleScope(name, moduleRef.moduleScope);
+                        const result = this.searchInModuleScope(name, moduleRef.moduleScope, filter);
                         if (result) return result;
                     }
                 }
@@ -2238,7 +2270,7 @@ class DefinitionResolver {
     /**
      * Resolve a name in opened modules, including external .urs files.
      */
-    private async resolveInOpenedModules(name: string, scope: Scope, usageOffset: number): Promise<ResolvedDefinition | null> {
+    private async resolveInOpenedModules(name: string, scope: Scope, usageOffset: number, filter?: (d: Definition) => boolean): Promise<ResolvedDefinition | null> {
         let currentScope: Scope | null = scope;
 
         while (currentScope) {
@@ -2262,7 +2294,7 @@ class DefinitionResolver {
                     }
 
                     if (moduleScope) {
-                        const result = this.searchInModuleScope(name, moduleScope);
+                        const result = this.searchInModuleScope(name, moduleScope, filter);
                         if (result) {
                             return {
                                 definition: result,
@@ -2288,19 +2320,21 @@ class DefinitionResolver {
     /**
      * Search for a name within a module's scope (no offset restriction).
      */
-    private searchInModuleScope(name: string, moduleScope: Scope): Definition | null {
+    private searchInModuleScope(name: string, moduleScope: Scope, filter?: (d: Definition) => boolean): Definition | null {
         const defs = moduleScope.definitions.get(name);
-        if (defs && defs.length > 0) {
-            return defs[defs.length - 1]; // Latest definition
+        if (defs) {
+            for (let i = defs.length - 1; i >= 0; i--) {
+                if (!filter || filter(defs[i])) return defs[i];
+            }
         }
 
         // Check opened modules within this module scope
         for (let i = moduleScope.opens.length - 1; i >= 0; i--) {
             const opened = moduleScope.opens[i];
-            // Resolve within module scope
+            // Resolve the module reference unfiltered (module refs are structures)
             const moduleRef = this.searchInModuleScope(opened.moduleRef.name, moduleScope);
             if (moduleRef?.moduleScope) {
-                const result = this.searchInModuleScope(name, moduleRef.moduleScope);
+                const result = this.searchInModuleScope(name, moduleRef.moduleScope, filter);
                 if (result) return result;
             }
         }
@@ -2496,6 +2530,78 @@ function getQualifiedNameAtPosition(document: vscode.TextDocument, position: vsc
 }
 
 /**
+ * Detect a style reference at the cursor. Recognized contexts:
+ *   - `CLASS "name1 name2"` — urweb expression form.
+ *   - `class=my-name` or `class="name1 name2"` — XML attribute form.
+ * Returns the single whitespace-delimited token under the cursor (dashes preserved).
+ */
+function getStyleNameAtPosition(document: vscode.TextDocument, position: vscode.Position): { name: string, range: vscode.Range } | null {
+    const line = document.lineAt(position.line).text;
+    const offset = position.character;
+    const STYLE_CHAR = /[A-Za-z0-9_-]/;
+
+    let start = offset;
+    while (start > 0 && STYLE_CHAR.test(line[start - 1])) start--;
+    let end = offset;
+    while (end < line.length && STYLE_CHAR.test(line[end])) end++;
+    if (start === end) return null;
+
+    const token = line.substring(start, end);
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(token)) return null;
+
+    const range = new vscode.Range(
+        new vscode.Position(position.line, start),
+        new vscode.Position(position.line, end)
+    );
+
+    // Walk left across any preceding sibling tokens separated by whitespace
+    // (to handle multi-style strings like "a b c").
+    let i = start;
+    while (true) {
+        while (i > 0 && /\s/.test(line[i - 1])) i--;
+        const before = i;
+        while (i > 0 && STYLE_CHAR.test(line[i - 1])) i--;
+        if (i === before) break;
+    }
+    if (i === 0) return null;
+
+    const isClassLiteral = (endIdx: number): boolean => {
+        let j = endIdx;
+        while (j > 0 && /\s/.test(line[j - 1])) j--;
+        const kwEnd = j;
+        while (j > 0 && /[A-Za-z_]/.test(line[j - 1])) j--;
+        const kw = line.substring(j, kwEnd);
+        if (kw !== 'CLASS') return false;
+        return j === 0 || !/[A-Za-z0-9_]/.test(line[j - 1]);
+    };
+
+    const isClassAttr = (endIdx: number): boolean => {
+        let j = endIdx;
+        while (j > 0 && /\s/.test(line[j - 1])) j--;
+        const kwEnd = j;
+        while (j > 0 && /[A-Za-z_]/.test(line[j - 1])) j--;
+        const kw = line.substring(j, kwEnd);
+        if (kw !== 'class' && kw !== 'CLASS') return false;
+        return j === 0 || !/[A-Za-z0-9_]/.test(line[j - 1]);
+    };
+
+    const ctx = line[i - 1];
+    if (ctx === '"') {
+        if (isClassLiteral(i - 1)) return { name: token, range };
+        let j = i - 1;
+        while (j > 0 && /\s/.test(line[j - 1])) j--;
+        if (j > 0 && line[j - 1] === '=' && isClassAttr(j - 1)) {
+            return { name: token, range };
+        }
+        return null;
+    }
+    if (ctx === '=') {
+        if (isClassAttr(i - 1)) return { name: token, range };
+    }
+    return null;
+}
+
+/**
  * Get the companion file URI (.ur <-> .urs).
  */
 function getCompanionUri(uri: vscode.Uri): vscode.Uri | null {
@@ -2608,11 +2714,14 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
         document: vscode.TextDocument,
         position: vscode.Position,
         _token: vscode.CancellationToken
-    ): Promise<vscode.Definition | null> {
+    ): Promise<vscode.Definition | vscode.LocationLink[] | null> {
         try {
-            // Get the qualified name at the cursor position
-            const qualifiedName = getQualifiedNameAtPosition(document, position);
-            if (!qualifiedName) return null;
+            // Style references (inside CLASS "..." or class="...") take priority over
+            // plain identifier resolution, since a single dashed token like `side-nav`
+            // overlaps with a valid bare identifier `nav` at the tail.
+            const styleRef = getStyleNameAtPosition(document, position);
+            const qualifiedName = styleRef ? null : getQualifiedNameAtPosition(document, position);
+            if (!qualifiedName && !styleRef) return null;
 
             // Tokenize and build scope tree
             const text = document.getText();
@@ -2624,6 +2733,19 @@ export class UrWebDefinitionProvider implements vscode.DefinitionProvider {
             const cursorOffset = document.offsetAt(position);
             const resolver = new DefinitionResolver(rootScope, document, this.fileManager);
             const scope = resolver.findScopeAt(cursorOffset);
+
+            if (styleRef) {
+                const normalized = styleRef.name.replace(/-/g, '_');
+                const resolved = await resolver.resolveStyleName(normalized, scope, cursorOffset);
+                if (!resolved) return null;
+                return [{
+                    originSelectionRange: styleRef.range,
+                    targetUri: resolved.uri,
+                    targetRange: resolved.definition.range,
+                    targetSelectionRange: resolved.definition.selectionRange,
+                }];
+            }
+            if (!qualifiedName) return null;
 
             // Check if we're clicking on a definition site itself
             if (qualifiedName.parts.length === 1) {
