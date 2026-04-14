@@ -52,11 +52,40 @@
     </dict>
     <dict>
       <key>comment</key>
-      <string>UrWeb SQL keywords</string>
-      <key>match</key>
-      <string>(\b(SELECT|DISTINCT|FROM|AS|WHERE|SQL|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|ALL|UNION|INTERSECT|EXCEPT|TRUE|FALSE|AND|OR|NOT|COUNT|AVG|SUM|MIN|MAX|ASC|DESC|INSERT|INTO|VALUES|UPDATE|SET|DELETE|PRIMARY|KEY|CONSTRAINT|UNIQUE|CHECK|FOREIGN|REFERENCES|ON|NO|ACTION|CASCADE|RESTRICT|NULL|JOIN|INNER|OUTER|LEFT|RIGHT|FULL|CROSS|SELECT1|IF|THEN|ELSE|COALESCE|LIKE|RANDOM)\b)</string>
-      <key>name</key>
-      <string>keyword.source.ur.sql</string>
+      <string>SQL block: (SQL ...), (WHERE ...), (FROM ...), (SELECT1 ...), (SELECT ...), (INSERT INTO ...), (UPDATE ...), (DELETE FROM ...)</string>
+      <key>begin</key>
+      <string>\(\s*(SQL|WHERE|FROM|SELECT1|SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b</string>
+      <key>end</key>
+      <string>\)</string>
+      <key>beginCaptures</key>
+      <dict>
+        <key>1</key>
+        <dict>
+          <key>name</key>
+          <string>keyword.source.ur.sql</string>
+        </dict>
+      </dict>
+      <key>contentName</key>
+      <string>source.sql</string>
+      <key>patterns</key>
+      <array>
+        <dict>
+          <key>include</key>
+          <string>#urwebEscapeInject</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>#urwebEscape</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>#sqlParenGroup</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>source.sql</string>
+        </dict>
+      </array>
     </dict>
     <dict>
       <key>comment</key>
@@ -74,14 +103,6 @@
       <key>name</key>
       <string>support.type.ur</string>
     </dict>
-    <!-- <dict>
-      <key>comment</key>
-      <string>lowercase Ur/Web identifiers</string>
-      <key>match</key>
-      <string>\b[a-z_]([A-Za-z0-9_']*)\b</string>
-      <key>name</key>
-      <string>variable.ur</string>
-    </dict> -->
     <dict>
       <key>comment</key>
       <string>String constant</string>
@@ -109,24 +130,40 @@
     </dict>
     <dict>
       <key>comment</key>
-      <string>XML Blocks</string>
+      <string>XML Blocks - embeds HTML grammar with Ur/Web escapes {e} and {[e]}</string>
       <key>begin</key>
-      <string>\<xml\></string>
+      <string>\&lt;xml\&gt;</string>
       <key>end</key>
-      <string>\<\/xml\></string>
-      <key>name</key>
-      <string>markup.ur</string>
+      <string>\&lt;/xml\&gt;</string>
+      <key>beginCaptures</key>
+      <dict>
+        <key>0</key>
+        <dict>
+          <key>name</key>
+          <string>punctuation.definition.tag.ur</string>
+        </dict>
+      </dict>
+      <key>endCaptures</key>
+      <dict>
+        <key>0</key>
+        <dict>
+          <key>name</key>
+          <string>punctuation.definition.tag.ur</string>
+        </dict>
+      </dict>
+      <key>contentName</key>
+      <string>text.html.basic</string>
       <key>patterns</key>
       <array>
         <dict>
           <key>comment</key>
-          <string>Comment block</string>
+          <string>Ur/Web (* ... *) comments inside XML</string>
           <key>begin</key>
           <string>\(\*</string>
           <key>end</key>
           <string>\*\)</string>
           <key>name</key>
-          <string>comment.ur</string>
+          <string>comment.block.ur</string>
           <key>patterns</key>
           <array>
             <dict>
@@ -136,17 +173,66 @@
           </array>
         </dict>
         <dict>
+          <key>include</key>
+          <string>#urwebEscapeInject</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>#urwebEscape</string>
+        </dict>
+        <dict>
+          <key>comment</key>
+          <string>Ur/Web custom tags (dyn, active) - tag opening with attributes</string>
           <key>begin</key>
-          <string>{</string>
+          <string>(&lt;)(dyn|active)\b</string>
           <key>end</key>
-          <string>}</string>
+          <string>(/?&gt;)</string>
+          <key>beginCaptures</key>
+          <dict>
+            <key>1</key>
+            <dict><key>name</key><string>punctuation.definition.tag.begin.html</string></dict>
+            <key>2</key>
+            <dict><key>name</key><string>entity.name.tag.html</string></dict>
+          </dict>
+          <key>endCaptures</key>
+          <dict>
+            <key>1</key>
+            <dict><key>name</key><string>punctuation.definition.tag.end.html</string></dict>
+          </dict>
           <key>patterns</key>
           <array>
             <dict>
               <key>include</key>
-              <string>$self</string>
+              <string>#urwebEscapeInject</string>
+            </dict>
+            <dict>
+              <key>include</key>
+              <string>#urwebEscape</string>
+            </dict>
+            <dict>
+              <key>include</key>
+              <string>text.html.basic#attribute</string>
             </dict>
           </array>
+        </dict>
+        <dict>
+          <key>comment</key>
+          <string>Ur/Web custom tags (dyn, active) - closing tag</string>
+          <key>match</key>
+          <string>(&lt;/)(dyn|active)(&gt;)</string>
+          <key>captures</key>
+          <dict>
+            <key>1</key>
+            <dict><key>name</key><string>punctuation.definition.tag.begin.html</string></dict>
+            <key>2</key>
+            <dict><key>name</key><string>entity.name.tag.html</string></dict>
+            <key>3</key>
+            <dict><key>name</key><string>punctuation.definition.tag.end.html</string></dict>
+          </dict>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>text.html.basic</string>
         </dict>
       </array>
     </dict>
@@ -172,6 +258,102 @@
         <dict>
           <key>include</key>
           <string>#nestedComment</string>
+        </dict>
+      </array>
+    </dict>
+    <key>urwebEscapeInject</key>
+    <dict>
+      <key>comment</key>
+      <string>{[ e ]} - inject an Ur expression via Top.txt</string>
+      <key>begin</key>
+      <string>\{\[</string>
+      <key>end</key>
+      <string>\]\}</string>
+      <key>beginCaptures</key>
+      <dict>
+        <key>0</key>
+        <dict>
+          <key>name</key>
+          <string>punctuation.section.embedded.ur</string>
+        </dict>
+      </dict>
+      <key>endCaptures</key>
+      <dict>
+        <key>0</key>
+        <dict>
+          <key>name</key>
+          <string>punctuation.section.embedded.ur</string>
+        </dict>
+      </dict>
+      <key>contentName</key>
+      <string>source.ur</string>
+      <key>patterns</key>
+      <array>
+        <dict>
+          <key>include</key>
+          <string>$self</string>
+        </dict>
+      </array>
+    </dict>
+    <key>urwebEscape</key>
+    <dict>
+      <key>comment</key>
+      <string>{ e } - computed Ur/Web expression inside XML or SQL</string>
+      <key>begin</key>
+      <string>\{(?!\[)</string>
+      <key>end</key>
+      <string>\}</string>
+      <key>beginCaptures</key>
+      <dict>
+        <key>0</key>
+        <dict>
+          <key>name</key>
+          <string>punctuation.section.embedded.ur</string>
+        </dict>
+      </dict>
+      <key>endCaptures</key>
+      <dict>
+        <key>0</key>
+        <dict>
+          <key>name</key>
+          <string>punctuation.section.embedded.ur</string>
+        </dict>
+      </dict>
+      <key>contentName</key>
+      <string>source.ur</string>
+      <key>patterns</key>
+      <array>
+        <dict>
+          <key>include</key>
+          <string>$self</string>
+        </dict>
+      </array>
+    </dict>
+    <key>sqlParenGroup</key>
+    <dict>
+      <key>comment</key>
+      <string>Balanced parens inside SQL so nested ( ) don't close the outer region early</string>
+      <key>begin</key>
+      <string>\(</string>
+      <key>end</key>
+      <string>\)</string>
+      <key>patterns</key>
+      <array>
+        <dict>
+          <key>include</key>
+          <string>#urwebEscapeInject</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>#urwebEscape</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>#sqlParenGroup</string>
+        </dict>
+        <dict>
+          <key>include</key>
+          <string>source.sql</string>
         </dict>
       </array>
     </dict>

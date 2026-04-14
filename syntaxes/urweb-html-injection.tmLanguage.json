@@ -1,0 +1,50 @@
+{
+  "scopeName": "urweb.html.injection",
+  "injectionSelector": "L:text.html.basic - string - comment",
+  "patterns": [
+    { "include": "#urwebComment" },
+    { "include": "#urwebEscapeInject" },
+    { "include": "#urwebEscape" }
+  ],
+  "repository": {
+    "urwebComment": {
+      "comment": "Ur/Web (* ... *) comments inside HTML-embedded regions",
+      "begin": "\\(\\*",
+      "end": "\\*\\)",
+      "name": "comment.block.ur",
+      "patterns": [
+        { "include": "#urwebComment" }
+      ]
+    },
+    "urwebEscapeInject": {
+      "comment": "{[ e ]} - inject an Ur expression via Top.txt",
+      "begin": "\\{\\[",
+      "end": "\\]\\}",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.ur" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.ur" }
+      },
+      "contentName": "source.ur",
+      "patterns": [
+        { "include": "source.ur" }
+      ]
+    },
+    "urwebEscape": {
+      "comment": "{ e } - computed Ur/Web expression inside XML",
+      "begin": "\\{(?!\\[)",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.embedded.ur" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.ur" }
+      },
+      "contentName": "source.ur",
+      "patterns": [
+        { "include": "source.ur" }
+      ]
+    }
+  }
+}

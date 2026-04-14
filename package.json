@@ -52,11 +52,26 @@
     "grammars": [{
       "language": "ur",
       "scopeName": "source.ur",
-      "path": "./syntaxes/urweb.tmLanguage"
+      "path": "./syntaxes/urweb.tmLanguage",
+      "embeddedLanguages": {
+        "meta.embedded.block.sql": "sql",
+        "source.sql": "sql"
+      }
     },{
       "language": "urs",
       "scopeName": "source.ur",
-      "path": "./syntaxes/urweb.tmLanguage"
+      "path": "./syntaxes/urweb.tmLanguage",
+      "embeddedLanguages": {
+        "meta.embedded.block.sql": "sql",
+        "source.sql": "sql"
+      }
+    },{
+      "scopeName": "urweb.html.injection",
+      "path": "./syntaxes/urweb-html-injection.tmLanguage.json",
+      "injectTo": ["source.ur"],
+      "embeddedLanguages": {
+        "source.ur": "ur"
+      }
     },{
       "language": "urp",
       "scopeName": "source.urp",
