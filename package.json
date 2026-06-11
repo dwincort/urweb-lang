@@ -21,6 +21,28 @@
     "onLanguage:urs"
   ],
   "contributes": {
+    "configuration": {
+      "title": "Ur/Web",
+      "properties": {
+        "urweb.server.path": {
+          "type": "string",
+          "default": "urweb",
+          "markdownDescription": "Path to the `urweb` executable used to start the language server. Defaults to `urweb` on your `PATH`."
+        },
+        "urweb.server.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["-startLspServer"],
+          "description": "Arguments passed to the urweb executable to start the language server."
+        },
+        "urweb.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace the communication between VS Code and the Ur/Web language server."
+        }
+      }
+    },
     "languages": [{
       "id": "ur",
       "aliases": ["UrWeb", "ur"],
@@ -78,6 +100,9 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
