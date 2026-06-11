@@ -5,8 +5,8 @@ src/**
 # TypeScript config
 tsconfig.json
 
-# Node modules
-node_modules/**
+# Note: node_modules is intentionally NOT ignored — vsce bundles production
+# dependencies (vscode-languageclient) and prunes devDependencies automatically.
 
 # Development files
 .vscode/**
