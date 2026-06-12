@@ -8,28 +8,22 @@ import {
     TransportKind,
 } from 'vscode-languageclient/node';
 
-// One server per project root (the directory containing the .urp file), mirroring
-// the nvim `root_dir` behaviour. Keyed by the absolute root path.
+// One server per project root (the closest ancestor directory containing a
+// `.git` folder), keyed by the absolute root path.
 const clients = new Map<string, LanguageClient>();
 
 const URWEB_LANGUAGES = ['ur', 'urs'];
 
 /**
- * Walk up from a file to the nearest ancestor directory that contains a `.urp`
- * project file. The Ur/Web LSP server scans its root for exactly one `.urp`,
- * so this is the directory we use as the workspace root.
+ * Walk up from a file to the nearest ancestor directory that contains a `.git`
+ * folder. This is the directory we use as the workspace root.
  */
-function findUrpRoot(filePath: string): string | undefined {
+function findProjectRoot(filePath: string): string | undefined {
     let dir = path.dirname(filePath);
     // eslint-disable-next-line no-constant-condition
     while (true) {
-        try {
-            if (fs.readdirSync(dir).some((name) => name.endsWith('.urp'))) {
-                return dir;
-            }
-        } catch {
-            // Unreadable directory — stop searching this branch.
-            return undefined;
+        if (fs.existsSync(path.join(dir, '.git'))) {
+            return dir;
         }
         const parent = path.dirname(dir);
         if (parent === dir) {
@@ -62,7 +56,7 @@ function startClientForRoot(root: string): void {
             language,
             pattern: path.join(root, '**', '*'),
         })),
-        // Make the .urp directory the LSP root, exactly like the nvim config.
+        // Make the project root the LSP root.
         workspaceFolder: {
             uri: rootUri,
             name: path.basename(root),
@@ -87,8 +81,8 @@ function maybeStartForDocument(doc: vscode.TextDocument): void {
     if (doc.uri.scheme !== 'file') {
         return;
     }
-    const root = findUrpRoot(doc.uri.fsPath);
-    // Mirror nvim: only start the server once a project root is found.
+    const root = findProjectRoot(doc.uri.fsPath);
+    // Only start the server once a project root is found.
     if (root) {
         startClientForRoot(root);
     }
