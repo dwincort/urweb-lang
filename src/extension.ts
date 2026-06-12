@@ -8,21 +8,24 @@ import {
     TransportKind,
 } from 'vscode-languageclient/node';
 
-// One server per project root (the closest ancestor directory containing a
-// `.git` folder), keyed by the absolute root path.
+// One server per project root, keyed by the absolute root path.
 const clients = new Map<string, LanguageClient>();
 
 const URWEB_LANGUAGES = ['ur', 'urs'];
 
 /**
- * Walk up from a file to the nearest ancestor directory that contains a `.git`
- * folder. This is the directory we use as the workspace root.
+ * Walk up from a file to the nearest ancestor directory that contains one of
+ * the configured root markers (`urweb.rootMarkers`, e.g. `.git`). This is the
+ * directory we use as the workspace root.
  */
-function findProjectRoot(filePath: string): string | undefined {
+function findMarkerRoot(filePath: string): string | undefined {
+    const markers = vscode.workspace
+        .getConfiguration('urweb')
+        .get<string[]>('rootMarkers', ['.git']);
     let dir = path.dirname(filePath);
     // eslint-disable-next-line no-constant-condition
     while (true) {
-        if (fs.existsSync(path.join(dir, '.git'))) {
+        if (markers.some((marker) => fs.existsSync(path.join(dir, marker)))) {
             return dir;
         }
         const parent = path.dirname(dir);
@@ -81,8 +84,11 @@ function maybeStartForDocument(doc: vscode.TextDocument): void {
     if (doc.uri.scheme !== 'file') {
         return;
     }
-    const root = findProjectRoot(doc.uri.fsPath);
-    // Only start the server once a project root is found.
+    // Prefer a root-marker ancestor; fall back to the workspace folder the
+    // document belongs to (if any).
+    const root =
+        findMarkerRoot(doc.uri.fsPath) ??
+        vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath;
     if (root) {
         startClientForRoot(root);
     }

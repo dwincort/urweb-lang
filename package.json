@@ -35,6 +35,12 @@
           "default": ["-startLspServer"],
           "description": "Arguments passed to the urweb executable to start the language server."
         },
+        "urweb.rootMarkers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [".git"],
+          "markdownDescription": "File or directory names that mark a project root. The language server is started in the closest ancestor directory of an Ur/Web file containing one of these. If none is found, the workspace folder is used."
+        },
         "urweb.trace.server": {
           "type": "string",
           "enum": ["off", "messages", "verbose"],
