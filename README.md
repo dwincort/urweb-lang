@@ -59,14 +59,11 @@ Ur/Web project):
 
 ### 3. Open a project
 
-The language server is rooted at the directory containing your project's `.urp`
-file. Open a folder that contains (at any level) a `.urp` file and open a `.ur`
-or `.urs` file inside it — the server starts automatically.
-
-The server scans its root for the `.urp` file; the root needs exactly one. The
-extension finds it by walking up from the file you open to the nearest ancestor
-directory that contains a `.urp`. If no `.urp` is found, only syntax highlighting
-is active.
+Open a `.ur` or `.urs` file — the server starts automatically. The extension
+finds the project root by walking up from the file you open to the nearest
+ancestor directory that contains one of the root markers configured via
+`urweb.rootMarkers` (by default, a `.git` folder). If no marker is found, the
+workspace folder containing the file is used instead.
 
 ## Extension settings
 
@@ -74,6 +71,7 @@ is active.
 | --- | --- | --- |
 | `urweb.server.path` | `"urweb"` | Path to the `urweb` executable used to start the language server. |
 | `urweb.server.args` | `["-startLspServer"]` | Arguments passed to the executable to start the language server. |
+| `urweb.rootMarkers` | `[".git"]` | File or directory names that mark a project root. The server is started in the closest ancestor directory of an Ur/Web file containing one of these — useful if you use a VCS other than git (e.g. `[".hg"]`). If none is found, the workspace folder is used. |
 | `urweb.trace.server` | `"off"` | Trace the communication between VS Code and the language server (`off`, `messages`, `verbose`). Useful for debugging. |
 
 ## Troubleshooting
