@@ -35,7 +35,7 @@ vsce package
 Install the `.vsix` into VS Code:
 
 ```bash
-code --install-extension urweb-lang-0.1.0.vsix
+code --install-extension urweb-lang-*.vsix
 ```
 
 ## Uploading
