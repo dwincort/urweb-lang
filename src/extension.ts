@@ -94,11 +94,29 @@ function maybeStartForDocument(doc: vscode.TextDocument): void {
     }
 }
 
+/**
+ * Stop every running language server and start fresh ones for the Ur/Web
+ * documents currently open. Backs the `urweb.restartServer` command.
+ */
+async function restartServers(): Promise<void> {
+    const running = [...clients.values()];
+    clients.clear();
+    await Promise.all(running.map((client) => client.stop()));
+    vscode.workspace.textDocuments.forEach(maybeStartForDocument);
+}
+
 export function activate(context: vscode.ExtensionContext): void {
     // Start a server for any Ur/Web files already open, and for any opened later.
     vscode.workspace.textDocuments.forEach(maybeStartForDocument);
     context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(maybeStartForDocument)
+        vscode.workspace.onDidOpenTextDocument(maybeStartForDocument),
+        vscode.commands.registerCommand('urweb.restartServer', async () => {
+            await restartServers();
+            vscode.window.setStatusBarMessage(
+                'Ur/Web: language server restarted',
+                3000
+            );
+        })
     );
 }
 

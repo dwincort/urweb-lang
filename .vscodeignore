@@ -19,6 +19,9 @@ tsconfig.json
 # Build artifacts
 *.vsix
 
+# Tooling / agent config
+.claude/**
+
 # Editor files
 *.swp
 *.swo

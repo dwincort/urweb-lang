@@ -2,7 +2,7 @@
   "name": "urweb-lang",
   "displayName": "urweb-language",
   "description": "Syntax highlighting and code navigation for Ur/Web",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "license": "MIT",
   "publisher": "DanWC",
   "engines": {
@@ -21,6 +21,13 @@
     "onLanguage:urs"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "urweb.restartServer",
+        "title": "Restart Language Server",
+        "category": "Ur/Web"
+      }
+    ],
     "configuration": {
       "title": "Ur/Web",
       "properties": {
